@@ -1,0 +1,3 @@
+module harnais
+
+go 1.26.4
