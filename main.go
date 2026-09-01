@@ -115,6 +115,8 @@ func main() {
 
 			store,
 
+			workspace,
+
 			func(request server.StartRunRequest) *graph.Run {
 
 				workflow, err :=

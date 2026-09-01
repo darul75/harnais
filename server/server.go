@@ -4,11 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"harnais/config"
 	"harnais/graph"
+	"harnais/tools"
 )
 
 type StartRunRequest struct {
@@ -72,6 +77,8 @@ type Server struct {
 
 	Settings *config.Store
 
+	Workspace *tools.Workspace
+
 	StartRun StartRunFunc
 
 	Workflows func() []WorkflowInfo
@@ -83,6 +90,7 @@ func NewServer(
 	bus *EventBus,
 	runs *RunManager,
 	settings *config.Store,
+	workspace *tools.Workspace,
 	startRun StartRunFunc,
 	workflows func() []WorkflowInfo,
 	getWorkflow func(id string) (*WorkflowDetail, bool),
@@ -93,6 +101,8 @@ func NewServer(
 		Runs: runs,
 
 		Settings: settings,
+
+		Workspace: workspace,
 
 		StartRun: startRun,
 
@@ -139,6 +149,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(
 		"POST /api/settings/test",
 		s.testSettings,
+	)
+
+	mux.HandleFunc(
+		"GET /api/reports",
+		s.listReports,
+	)
+
+	mux.HandleFunc(
+		"GET /api/reports/{name}",
+		s.getReport,
 	)
 
 	mux.HandleFunc(
@@ -427,6 +447,197 @@ func (s *Server) testSettings(
 		w,
 		result,
 	)
+}
+
+// ------------------------------------------------------------
+// Reports
+// ------------------------------------------------------------
+
+type reportInfo struct {
+	Name string `json:"name"`
+
+	Size int64 `json:"size"`
+
+	Modified time.Time `json:"modified"`
+}
+
+// reportRoot is the directory (relative to the workspace) where
+// generated markdown reports are stored.
+const reportRoot = "reports"
+
+func (s *Server) reportsDir() (string, error) {
+
+	if s.Workspace == nil {
+		return "", fmt.Errorf(
+			"workspace not configured",
+		)
+	}
+
+	resolved, err :=
+		s.Workspace.Resolve(
+			reportRoot,
+		)
+
+	if err != nil {
+		return "", err
+	}
+
+	return resolved, nil
+}
+
+func (s *Server) listReports(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	dir, err :=
+		s.reportsDir()
+
+	if err != nil {
+		http.Error(
+			w,
+			err.Error(),
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	var reports []reportInfo
+
+	_ = filepath.WalkDir(
+		dir,
+		func(
+			path string,
+			entry os.DirEntry,
+			err error,
+		) error {
+
+			if err != nil ||
+				entry.IsDir() {
+				return nil
+			}
+
+			relative, relErr :=
+				filepath.Rel(
+					dir,
+					path,
+				)
+
+			if relErr != nil {
+				return nil
+			}
+
+			if !strings.HasSuffix(
+				strings.ToLower(relative),
+				".md",
+			) {
+				return nil
+			}
+
+			info, infoErr :=
+				entry.Info()
+
+			if infoErr != nil {
+				return nil
+			}
+
+			reports =
+				append(
+					reports,
+					reportInfo{
+						Name: relative,
+
+						Size: info.Size(),
+
+						Modified: info.ModTime(),
+					},
+				)
+
+			return nil
+		},
+	)
+
+	sort.Slice(
+		reports,
+		func(i, j int) bool {
+			return reports[i].Name <
+				reports[j].Name
+		},
+	)
+
+	writeJSON(
+		w,
+		map[string]any{
+			"reports": reports,
+		},
+	)
+}
+
+func (s *Server) getReport(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	name :=
+		r.PathValue("name")
+
+	if name == "" {
+		http.Error(
+			w,
+			"report name is required",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	_, err :=
+		s.reportsDir()
+
+	if err != nil {
+		http.Error(
+			w,
+			err.Error(),
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	resolved, err :=
+		s.Workspace.Resolve(
+			filepath.Join(
+				reportRoot,
+				name,
+			),
+		)
+
+	if err != nil {
+		http.Error(
+			w,
+			"invalid report path",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	content, err :=
+		os.ReadFile(resolved)
+
+	if err != nil {
+		http.Error(
+			w,
+			"report not found",
+			http.StatusNotFound,
+		)
+		return
+	}
+
+	w.Header().Set(
+		"Content-Type",
+		"text/markdown; charset=utf-8",
+	)
+
+	_, _ =
+		w.Write(content)
 }
 
 type runSummary struct {
