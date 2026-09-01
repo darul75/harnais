@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"harnais/agent"
@@ -33,6 +35,9 @@ type Field struct {
 	Type FieldType `json:"type"`
 
 	Placeholder string `json:"placeholder,omitempty"`
+
+	// Suggestions are optional values offered in the UI.
+	Suggestions []string `json:"suggestions,omitempty"`
 
 	// EnvVar is the environment variable used to seed the value
 	// when nothing is persisted yet.
@@ -76,6 +81,25 @@ var providers = []Provider{
 				Type:        FieldString,
 				Placeholder: "gpt-4o-mini",
 				EnvVar:      "OPENAI_MODEL",
+			},
+		},
+	},
+
+	{
+		ID:    "opencode",
+		Label: "OpenCode Zen",
+		Fields: []Field{
+			{
+				Key:         "model",
+				Label:       "Model",
+				Type:        FieldString,
+				Placeholder: "opencode/deepseek-v4-flash",
+
+				Suggestions: []string{
+					"opencode/deepseek-v4-flash",
+					"opencode/gemini-3-flash",
+					"opencode/claude-haiku-4-5",
+				},
 			},
 		},
 	},
@@ -312,11 +336,6 @@ func providerConfigured(
 
 	for _, field := range provider.Fields {
 
-		if field.Type !=
-			FieldSecret {
-			continue
-		}
-
 		if values[field.Key] != "" {
 			return true
 		}
@@ -476,12 +495,76 @@ func Test(
 			values["model"],
 		)
 
+	case "opencode":
+		return testOpenCodeModel(
+			values["model"],
+		)
+
 	default:
 		return fmt.Errorf(
 			"unknown provider %q",
 			providerID,
 		)
 	}
+}
+
+// testOpenCodeModel verifies that a model exists for the OpenCode
+// provider by listing the cached model catalog. It does not make a
+// model call.
+func testOpenCodeModel(
+	model string,
+) error {
+
+	if model == "" {
+		return fmt.Errorf(
+			"model is missing",
+		)
+	}
+
+	binary, err :=
+		exec.LookPath("opencode")
+
+	if err != nil {
+		return fmt.Errorf(
+			"opencode CLI not found: %w",
+			err,
+		)
+	}
+
+	cmd :=
+		exec.Command(
+			binary,
+			"models",
+			"opencode",
+		)
+
+	output, err :=
+		cmd.CombinedOutput()
+
+	if err != nil {
+		return fmt.Errorf(
+			"opencode models: %v",
+			err,
+		)
+	}
+
+	for _, line := range
+		strings.Split(
+			string(output),
+			"\n",
+		) {
+
+		if strings.TrimSpace(line) ==
+			model {
+
+			return nil
+		}
+	}
+
+	return fmt.Errorf(
+		"model %q not found on OpenCode Zen",
+		model,
+	)
 }
 
 // ------------------------------------------------------------

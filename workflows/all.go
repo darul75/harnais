@@ -22,6 +22,12 @@ func Register(
 
 		CodingWorkflow(s),
 
+		OpenCodeCodingWorkflow(s),
+
+		ResearchWorkflow(s),
+
+		ContentWorkflow(s),
+
 		SecurityAuditWorkflow(s),
 
 		RefactorWorkflow(s),

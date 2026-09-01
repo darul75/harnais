@@ -99,6 +99,40 @@ func TestSelectFallbackDefault(t *testing.T) {
 	}
 }
 
+func TestRegistryIncludesOpenCode(t *testing.T) {
+
+	registry := testRegistry(t)
+
+	if _, ok :=
+		registry.Get(OpenCodeCodingWorkflowID); !ok {
+
+		t.Fatalf(
+			"expected %q workflow",
+			OpenCodeCodingWorkflowID,
+		)
+	}
+}
+
+func TestRegistryIncludesResearchAndContent(t *testing.T) {
+
+	registry := testRegistry(t)
+
+	for _, id := range []string{
+		ResearchWorkflowID,
+		ContentWorkflowID,
+	} {
+
+		if _, ok :=
+			registry.Get(id); !ok {
+
+			t.Errorf(
+				"expected %q workflow",
+				id,
+			)
+		}
+	}
+}
+
 func TestSelectWeather(t *testing.T) {
 	registry := testRegistry(t)
 	selector := NewSelector(registry, nil)

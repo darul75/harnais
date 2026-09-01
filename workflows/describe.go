@@ -5,6 +5,7 @@ import (
 
 	"harnais/agent"
 	"harnais/graph"
+	"harnais/opencode"
 )
 
 // NodeKind classifies the worker behind a graph node.
@@ -114,6 +115,18 @@ func Describe(
 				sort.Strings(tools)
 
 				nodeInfo.Tools = tools
+			}
+
+		case *opencode.Worker:
+
+			nodeInfo.Kind = NodeAgent
+
+			nodeInfo.AgentID = worker.AgentID
+
+			nodeInfo.Prompt = worker.Prompt
+
+			nodeInfo.Tools = []string{
+				"opencode",
 			}
 
 		case *graph.FuncWorker:

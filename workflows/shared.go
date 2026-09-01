@@ -3,11 +3,16 @@ package workflows
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"harnais/agent"
 	"harnais/config"
 	"harnais/graph"
+	"harnais/llm"
+	"harnais/opencode"
 	"harnais/tools"
 )
 
@@ -159,6 +164,191 @@ func (s *Shared) Security(
 
 		ToolRegistry: toolRegistry,
 	}
+}
+
+// ------------------------------------------------------------
+// OpenCode coder
+// ------------------------------------------------------------
+
+// OpenCodeCoder returns a worker that drives the OpenCode CLI to
+// implement a change inside the workspace. The existing LoopAgent
+// coder (Coder) remains available alongside it.
+func (s *Shared) OpenCodeCoder(
+	prompt string,
+) *opencode.Worker {
+
+	return &opencode.Worker{
+		AgentID: "opencode-coder",
+
+		Prompt: prompt,
+
+		Dir: s.workspace.Root,
+
+		Model: s.store.Get(
+			"opencode",
+			"model",
+		),
+	}
+}
+
+// ------------------------------------------------------------
+// Prose agent
+// ------------------------------------------------------------
+
+// ProseAgent returns a LoopAgent that can read and write workspace
+// files but has no shell or network access. Used for planning,
+// writing, editing, and synthesis steps.
+func (s *Shared) ProseAgent(
+	agentID string,
+	prompt string,
+) *agent.LoopAgent {
+
+	return &agent.LoopAgent{
+		AgentID: agentID,
+
+		Prompt: prompt,
+
+		LLMFactory: s.LLMFactory(
+			"openai",
+		),
+
+		ToolRegistry: proseTools(s),
+	}
+}
+
+// ------------------------------------------------------------
+// Research agent (web search)
+// ------------------------------------------------------------
+
+// ResearchAgent returns a LoopAgent that can search the web via the
+// OpenAI Responses API web_search tool and write findings to files.
+func (s *Shared) ResearchAgent(
+	agentID string,
+	prompt string,
+) *agent.LoopAgent {
+
+	return &agent.LoopAgent{
+		AgentID: agentID,
+
+		Prompt: prompt,
+
+		LLMFactory: func() agent.LLM {
+
+			provider :=
+				llm.NewOpenAI(
+					s.store.Get(
+						"openai",
+						"apiKey",
+					),
+					s.store.Get(
+						"openai",
+						"model",
+					),
+				)
+
+			provider.WebSearch = true
+
+			return provider
+		},
+
+		ToolRegistry: proseTools(s),
+	}
+}
+
+func proseTools(
+	s *Shared,
+) *agent.ToolRegistry {
+
+	return agent.NewToolRegistry(
+		tools.ReadFile{
+			Workspace: s.workspace,
+		},
+
+		tools.WriteFile{
+			Workspace: s.workspace,
+		},
+	)
+}
+
+// ------------------------------------------------------------
+// Report writer
+// ------------------------------------------------------------
+
+// WriteReport returns a function worker that saves the markdown in
+// state[stateKey] to workspace/reports/<name>.md and records the
+// saved path in state.
+func (s *Shared) WriteReport(
+	name string,
+	stateKey string,
+) *graph.FuncWorker {
+
+	return graph.NewFuncWorker(
+		"write_report",
+
+		func(
+			ctx context.Context,
+			state graph.State,
+		) (graph.State, error) {
+
+			content, _ :=
+				state[stateKey].(string)
+
+			if strings.TrimSpace(content) == "" {
+				return nil, fmt.Errorf(
+					"write_report: %q is empty",
+					stateKey,
+				)
+			}
+
+			if !strings.HasSuffix(
+				name,
+				".md",
+			) {
+
+				name += ".md"
+			}
+
+			relative :=
+				filepath.Join(
+					"reports",
+					name,
+				)
+
+			resolved, err :=
+				s.workspace.Resolve(
+					relative,
+				)
+
+			if err != nil {
+				return nil, err
+			}
+
+			if err :=
+				os.MkdirAll(
+					filepath.Dir(resolved),
+					0o755,
+				); err != nil {
+
+				return nil, err
+			}
+
+			if err :=
+				os.WriteFile(
+					resolved,
+					[]byte(content),
+					0o644,
+				); err != nil {
+
+				return nil, err
+			}
+
+			return graph.State{
+				"report_path": relative,
+
+				"report_name": name,
+			}, nil
+		},
+	)
 }
 
 // ------------------------------------------------------------
