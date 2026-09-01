@@ -6,40 +6,39 @@ import {
 
 import {
   createRun,
+  getAgentExecutions,
   getExecutions,
   getGraph,
+  getLLMCalls,
   getRun,
   getState,
+  getToolCalls,
   subscribeToEvents,
 } from "./api";
 
 import type {
+  AgentExecution,
   GraphDefinition,
   GraphEvent,
+  LLMCall,
   NodeExecution,
   Run,
+  ToolCall,
   WorkflowState,
 } from "./types";
 
 import { GraphView } from "./GraphView";
 import { EventList } from "./EventList";
-import {
-  ExecutionList,
-} from "./ExecutionList";
-import {
-  ExecutionDetails,
-} from "./ExecutionDetails";
+import { ExecutionList } from "./ExecutionList";
+import { ExecutionDetails } from "./ExecutionDetails";
 import { StateView } from "./StateView";
 
 export default function App() {
-
   const [run, setRun] =
     useState<Run | null>(null);
 
   const [graph, setGraph] =
-    useState<GraphDefinition | null>(
-      null,
-    );
+    useState<GraphDefinition | null>(null);
 
   const [state, setState] =
     useState<WorkflowState>({});
@@ -47,15 +46,22 @@ export default function App() {
   const [executions, setExecutions] =
     useState<NodeExecution[]>([]);
 
+  const [agentExecutions, setAgentExecutions] =
+    useState<AgentExecution[]>([]);
+
+  const [llmCalls, setLLMCalls] =
+    useState<LLMCall[]>([]);
+
+  const [toolCalls, setToolCalls] =
+    useState<ToolCall[]>([]);
+
   const [events, setEvents] =
     useState<GraphEvent[]>([]);
 
   const [
     selectedExecutionId,
     setSelectedExecutionId,
-  ] = useState<string | null>(
-    null,
-  );
+  ] = useState<string | null>(null);
 
   const [starting, setStarting] =
     useState(false);
@@ -67,11 +73,9 @@ export default function App() {
     useRef<EventSource | null>(null);
 
   function closeEvents() {
-
     eventSourceRef.current?.close();
 
-    eventSourceRef.current =
-      null;
+    eventSourceRef.current = null;
   }
 
   async function refreshRun(
@@ -82,13 +86,16 @@ export default function App() {
       updatedRun,
       updatedState,
       updatedExecutions,
+      updatedAgentExecutions,
+      updatedLLMCalls,
+      updatedToolCalls,
     ] = await Promise.all([
-
       getRun(runId),
-
       getState(runId),
-
       getExecutions(runId),
+      getAgentExecutions(runId),
+      getLLMCalls(runId),
+      getToolCalls(runId),
     ]);
 
     setRun(updatedRun);
@@ -99,16 +106,19 @@ export default function App() {
       updatedExecutions,
     );
 
-    return updatedRun;
-  }
-
-  function selectExecution(
-    execution: NodeExecution,
-  ) {
-
-    setSelectedExecutionId(
-      execution.id,
+    setAgentExecutions(
+      updatedAgentExecutions,
     );
+
+    setLLMCalls(
+      updatedLLMCalls,
+    );
+
+    setToolCalls(
+      updatedToolCalls,
+    );
+
+    return updatedRun;
   }
 
   async function startRun() {
@@ -116,18 +126,22 @@ export default function App() {
     try {
 
       setStarting(true);
-
       setError(null);
 
       closeEvents();
 
       setRun(null);
-
       setGraph(null);
 
       setState({});
 
       setExecutions([]);
+
+      setAgentExecutions([]);
+
+      setLLMCalls([]);
+
+      setToolCalls([]);
 
       setEvents([]);
 
@@ -153,32 +167,17 @@ export default function App() {
       const [
         initialRun,
         initialGraph,
-        initialState,
-        initialExecutions,
       ] = await Promise.all([
-
         getRun(runId),
-
         getGraph(runId),
-
-        getState(runId),
-
-        getExecutions(runId),
       ]);
 
       setRun(initialRun);
 
       setGraph(initialGraph);
 
-      setState(initialState);
-
-      setExecutions(
-        initialExecutions,
-      );
-
       const source =
         subscribeToEvents(
-
           runId,
 
           async (message) => {
@@ -191,11 +190,11 @@ export default function App() {
                 ) as GraphEvent;
 
               setEvents(
-                (current) => {
+                current => {
 
                   if (
                     current.some(
-                      (item) =>
+                      item =>
                         item.id ===
                         event.id,
                     )
@@ -237,8 +236,7 @@ export default function App() {
             }
           },
 
-          (event) => {
-
+          event => {
             console.log(
               "SSE error",
               event,
@@ -263,10 +261,6 @@ export default function App() {
     }
   }
 
-  // ------------------------------------------------------------
-  // Reconnect to existing ?run=...
-  // ------------------------------------------------------------
-
   useEffect(() => {
 
     const params =
@@ -278,6 +272,7 @@ export default function App() {
       params.get("run");
 
     if (!runId) {
+
       return () => {
         closeEvents();
       };
@@ -294,15 +289,17 @@ export default function App() {
           initialGraph,
           initialState,
           initialExecutions,
+          initialAgentExecutions,
+          initialLLMCalls,
+          initialToolCalls,
         ] = await Promise.all([
-
           getRun(runId),
-
           getGraph(runId),
-
           getState(runId),
-
           getExecutions(runId),
+          getAgentExecutions(runId),
+          getLLMCalls(runId),
+          getToolCalls(runId),
         ]);
 
         if (disposed) {
@@ -319,12 +316,23 @@ export default function App() {
           initialExecutions,
         );
 
+        setAgentExecutions(
+          initialAgentExecutions,
+        );
+
+        setLLMCalls(
+          initialLLMCalls,
+        );
+
+        setToolCalls(
+          initialToolCalls,
+        );
+
         const source =
           subscribeToEvents(
-
             runId,
 
-            async (message) => {
+            async message => {
 
               if (disposed) {
                 return;
@@ -338,11 +346,11 @@ export default function App() {
                   ) as GraphEvent;
 
                 setEvents(
-                  (current) => {
+                  current => {
 
                     if (
                       current.some(
-                        (item) =>
+                        item =>
                           item.id ===
                           event.id,
                       )
@@ -388,8 +396,7 @@ export default function App() {
               }
             },
 
-            (event) => {
-
+            event => {
               console.log(
                 "SSE error",
                 event,
@@ -426,7 +433,7 @@ export default function App() {
 
   const selectedExecution =
     executions.find(
-      (execution) =>
+      execution =>
         execution.id ===
         selectedExecutionId,
     ) ?? null;
@@ -468,15 +475,9 @@ export default function App() {
 
         <header className="header">
 
-          <div>
-            <h1>
-              Go Coding Harness
-            </h1>
-
-            <div className="run-id">
-              Agent orchestration demo
-            </div>
-          </div>
+          <h1>
+            Go Coding Harness
+          </h1>
 
         </header>
 
@@ -487,9 +488,9 @@ export default function App() {
           </h2>
 
           <p>
-            Start a workflow and inspect
-            every node, worker, agent,
-            LLM and tool execution.
+            Run the workflow and inspect
+            the graph, agents, LLM calls
+            and tools.
           </p>
 
           <button
@@ -567,21 +568,18 @@ export default function App() {
           </div>
 
           <GraphView
-
             graph={graph}
-
             executions={executions}
-
             events={events}
-
             selectedExecutionId={
               selectedExecutionId
             }
-
             onSelectExecution={
-              selectExecution
+              execution =>
+                setSelectedExecutionId(
+                  execution.id,
+                )
             }
-
           />
 
         </section>
@@ -591,27 +589,22 @@ export default function App() {
           <section className="panel">
 
             <div className="panel-header">
-
               <h2>
                 Executions
               </h2>
-
             </div>
 
             <ExecutionList
-
-              executions={
-                executions
-              }
-
+              executions={executions}
               selectedExecutionId={
                 selectedExecutionId
               }
-
               onSelect={
-                selectExecution
+                execution =>
+                  setSelectedExecutionId(
+                    execution.id,
+                  )
               }
-
             />
 
           </section>
@@ -619,11 +612,9 @@ export default function App() {
           <section className="panel">
 
             <div className="panel-header">
-
               <h2>
                 State
               </h2>
-
             </div>
 
             <StateView
@@ -637,15 +628,15 @@ export default function App() {
         <section className="panel">
 
           <ExecutionDetails
-
             execution={
               selectedExecution
             }
-
-            events={
-              events
+            agentExecutions={
+              agentExecutions
             }
-
+            llmCalls={llmCalls}
+            toolCalls={toolCalls}
+            events={events}
           />
 
         </section>
@@ -665,17 +656,13 @@ export default function App() {
           </div>
 
           <EventList
-
             events={events}
-
             selectedExecutionId={
               selectedExecutionId
             }
-
             onSelectExecution={
               setSelectedExecutionId
             }
-
           />
 
         </section>

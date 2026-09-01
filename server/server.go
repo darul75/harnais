@@ -14,7 +14,8 @@ type StartRunFunc func(
 ) *graph.Run
 
 type Server struct {
-	Bus  *EventBus
+	Bus *EventBus
+
 	Runs *RunManager
 
 	StartRun StartRunFunc
@@ -26,8 +27,10 @@ func NewServer(
 	startRun StartRunFunc,
 ) *Server {
 	return &Server{
-		Bus:      bus,
-		Runs:     runs,
+		Bus: bus,
+
+		Runs: runs,
+
 		StartRun: startRun,
 	}
 }
@@ -62,6 +65,21 @@ func (s *Server) Handler() http.Handler {
 	)
 
 	mux.HandleFunc(
+		"GET /api/runs/{runID}/agent-executions",
+		s.getAgentExecutions,
+	)
+
+	mux.HandleFunc(
+		"GET /api/runs/{runID}/llm-calls",
+		s.getLLMCalls,
+	)
+
+	mux.HandleFunc(
+		"GET /api/runs/{runID}/tool-calls",
+		s.getToolCalls,
+	)
+
+	mux.HandleFunc(
 		"GET /api/runs/{runID}/events",
 		s.events,
 	)
@@ -85,7 +103,6 @@ func (s *Server) createRun(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-
 	var request createRunRequest
 
 	if r.ContentLength != 0 {
@@ -105,7 +122,8 @@ func (s *Server) createRun(
 	}
 
 	if request.State == nil {
-		request.State = make(graph.State)
+		request.State =
+			make(graph.State)
 	}
 
 	if s.StartRun == nil {
@@ -140,7 +158,6 @@ func (s *Server) getRun(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-
 	runID :=
 		r.PathValue("runID")
 
@@ -183,7 +200,6 @@ func (s *Server) getGraph(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-
 	runID :=
 		r.PathValue("runID")
 
@@ -206,49 +222,58 @@ func (s *Server) getGraph(
 	}
 
 	type EdgeDTO struct {
-		ID   string `json:"id"`
+		ID string `json:"id"`
+
 		From string `json:"from"`
-		To   string `json:"to"`
+
+		To string `json:"to"`
 	}
 
-	nodes := make(
-		[]NodeDTO,
-		0,
-		len(run.Graph.Nodes),
-	)
+	nodes :=
+		make(
+			[]NodeDTO,
+			0,
+			len(run.Graph.Nodes),
+		)
 
 	for id := range run.Graph.Nodes {
 
-		nodes = append(
-			nodes,
-			NodeDTO{
-				ID: id,
-			},
-		)
+		nodes =
+			append(
+				nodes,
+				NodeDTO{
+					ID: id,
+				},
+			)
 	}
 
-	edges := make(
-		[]EdgeDTO,
-		0,
-		len(run.Graph.Edges),
-	)
+	edges :=
+		make(
+			[]EdgeDTO,
+			0,
+			len(run.Graph.Edges),
+		)
 
 	for _, edge := range run.Graph.Edges {
 
-		edges = append(
-			edges,
-			EdgeDTO{
-				ID:   edge.ID,
-				From: edge.From,
-				To:   edge.To,
-			},
-		)
+		edges =
+			append(
+				edges,
+				EdgeDTO{
+					ID: edge.ID,
+
+					From: edge.From,
+
+					To: edge.To,
+				},
+			)
 	}
 
 	writeJSON(
 		w,
 		map[string]any{
 			"nodes": nodes,
+
 			"edges": edges,
 		},
 	)
@@ -262,7 +287,6 @@ func (s *Server) getState(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-
 	runID :=
 		r.PathValue("runID")
 
@@ -287,14 +311,13 @@ func (s *Server) getState(
 }
 
 // ------------------------------------------------------------
-// Executions
+// Node executions
 // ------------------------------------------------------------
 
 func (s *Server) getExecutions(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-
 	runID :=
 		r.PathValue("runID")
 
@@ -322,6 +345,108 @@ func (s *Server) getExecutions(
 }
 
 // ------------------------------------------------------------
+// Agent executions
+// ------------------------------------------------------------
+
+func (s *Server) getAgentExecutions(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	runID :=
+		r.PathValue("runID")
+
+	run, exists :=
+		s.Runs.Get(runID)
+
+	if !exists {
+
+		http.Error(
+			w,
+			"run not found",
+			http.StatusNotFound,
+		)
+
+		return
+	}
+
+	snapshot :=
+		run.Snapshot()
+
+	writeJSON(
+		w,
+		snapshot.AgentExecutions,
+	)
+}
+
+// ------------------------------------------------------------
+// LLM calls
+// ------------------------------------------------------------
+
+func (s *Server) getLLMCalls(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	runID :=
+		r.PathValue("runID")
+
+	run, exists :=
+		s.Runs.Get(runID)
+
+	if !exists {
+
+		http.Error(
+			w,
+			"run not found",
+			http.StatusNotFound,
+		)
+
+		return
+	}
+
+	snapshot :=
+		run.Snapshot()
+
+	writeJSON(
+		w,
+		snapshot.LLMCalls,
+	)
+}
+
+// ------------------------------------------------------------
+// Tool calls
+// ------------------------------------------------------------
+
+func (s *Server) getToolCalls(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	runID :=
+		r.PathValue("runID")
+
+	run, exists :=
+		s.Runs.Get(runID)
+
+	if !exists {
+
+		http.Error(
+			w,
+			"run not found",
+			http.StatusNotFound,
+		)
+
+		return
+	}
+
+	snapshot :=
+		run.Snapshot()
+
+	writeJSON(
+		w,
+		snapshot.ToolCalls,
+	)
+}
+
+// ------------------------------------------------------------
 // SSE
 // ------------------------------------------------------------
 
@@ -329,7 +454,6 @@ func (s *Server) events(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-
 	runID :=
 		r.PathValue("runID")
 
@@ -381,7 +505,8 @@ func (s *Server) events(
 		return
 	}
 
-	lastEventID := uint64(0)
+	lastEventID :=
+		uint64(0)
 
 	if value :=
 		r.Header.Get("Last-Event-ID"); value != "" {
@@ -444,11 +569,14 @@ func (s *Server) events(
 	}
 }
 
+// ------------------------------------------------------------
+// SSE writer
+// ------------------------------------------------------------
+
 func writeSSE(
 	w http.ResponseWriter,
 	event graph.Event,
 ) {
-
 	data, err :=
 		json.Marshal(event)
 
@@ -475,11 +603,14 @@ func writeSSE(
 	)
 }
 
+// ------------------------------------------------------------
+// JSON
+// ------------------------------------------------------------
+
 func writeJSON(
 	w http.ResponseWriter,
 	value any,
 ) {
-
 	w.Header().Set(
 		"Content-Type",
 		"application/json",
@@ -489,6 +620,10 @@ func writeJSON(
 		w,
 	).Encode(value)
 }
+
+// ------------------------------------------------------------
+// CORS
+// ------------------------------------------------------------
 
 func withCORS(
 	next http.Handler,

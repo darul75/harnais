@@ -178,21 +178,19 @@ func buildGraph() *graph.Graph {
 
 	coder :=
 		&agent.LoopAgent{
-
 			AgentID: "coder-agent",
 
 			Prompt: "Implement the authentication fix.",
 
-			LLM: &FakeLLM{
-				Name: "coder-llm",
+			LLMFactory: func() agent.LLM {
+				return &FakeLLM{
+					Name: "coder-llm",
+				}
 			},
 
 			Tools: map[string]agent.Tool{
-
 				"read_file": ReadFileTool{},
-
 				"edit_file": EditFileTool{},
-
 				"run_tests": RunTestsTool{},
 			},
 		}
@@ -212,17 +210,17 @@ func buildGraph() *graph.Graph {
 
 	security :=
 		&agent.LoopAgent{
-
 			AgentID: "security-agent",
 
 			Prompt: "Check the authentication implementation for security issues.",
 
-			LLM: &FakeLLM{
-				Name: "security-llm",
+			LLMFactory: func() agent.LLM {
+				return &FakeLLM{
+					Name: "security-llm",
+				}
 			},
 
 			Tools: map[string]agent.Tool{
-
 				"read_file": ReadFileTool{},
 			},
 		}
@@ -314,7 +312,7 @@ func buildGraph() *graph.Graph {
 			) (graph.State, error) {
 
 				fmt.Println(
-					"[reviewer] Reviewing...",
+					"[reviewer] Reviewing all results...",
 				)
 
 				time.Sleep(
@@ -334,8 +332,11 @@ func buildGraph() *graph.Graph {
 	must(
 		g.AddNode(
 			&graph.Node{
-				ID:     "reviewer",
+				ID: "reviewer",
+
 				Worker: reviewer,
+
+				JoinAll: true,
 			},
 		),
 	)

@@ -640,3 +640,83 @@ pre {
 
   color: #fca5a5;
 }
+
+.agent-execution {
+  margin-top: 18px;
+
+  padding-top: 18px;
+
+  border-top: 1px solid #374151;
+}
+
+.nested-calls {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 8px;
+
+  margin-top: 12px;
+}
+
+.nested-call {
+  padding: 12px;
+
+  border: 1px solid #374151;
+
+  border-radius: 7px;
+
+  background: #111827;
+}
+
+.nested-call-header {
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  font-family: monospace;
+
+  font-size: 12px;
+
+  font-weight: 600;
+}
+
+.nested-call-meta {
+  display: flex;
+
+  gap: 14px;
+
+  margin-top: 6px;
+
+  color: #9ca3af;
+
+  font-family: monospace;
+
+  font-size: 11px;
+}
+
+.nested-call details {
+  margin-top: 10px;
+}
+
+.nested-call summary {
+  color: #9ca3af;
+
+  cursor: pointer;
+
+  font-size: 11px;
+}
+
+.nested-call pre {
+  margin-top: 8px;
+}
+
+.llm-call {
+  border-left: 3px solid #60a5fa;
+}
+
+.tool-call {
+  border-left: 3px solid #fbbf24;
+}

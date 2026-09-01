@@ -14,7 +14,6 @@ func NewGraph() *Graph {
 }
 
 func (g *Graph) AddNode(node *Node) error {
-
 	if node == nil {
 		return fmt.Errorf("node cannot be nil")
 	}
@@ -83,7 +82,8 @@ func (g *Graph) AddConditionalEdge(
 			),
 
 			From: from,
-			To:   to,
+
+			To: to,
 
 			Condition: condition,
 		},

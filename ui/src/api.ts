@@ -1,7 +1,10 @@
 import type {
+  AgentExecution,
   GraphDefinition,
+  LLMCall,
   NodeExecution,
   Run,
+  ToolCall,
   WorkflowState,
 } from "./types";
 
@@ -90,6 +93,33 @@ export function getExecutions(
   );
 }
 
+export function getAgentExecutions(
+  runId: string,
+): Promise<AgentExecution[]> {
+
+  return get<AgentExecution[]>(
+    `${API}/runs/${runId}/agent-executions`,
+  );
+}
+
+export function getLLMCalls(
+  runId: string,
+): Promise<LLMCall[]> {
+
+  return get<LLMCall[]>(
+    `${API}/runs/${runId}/llm-calls`,
+  );
+}
+
+export function getToolCalls(
+  runId: string,
+): Promise<ToolCall[]> {
+
+  return get<ToolCall[]>(
+    `${API}/runs/${runId}/tool-calls`,
+  );
+}
+
 export function subscribeToEvents(
   runId: string,
   onEvent: (
@@ -106,39 +136,28 @@ export function subscribeToEvents(
     );
 
   const eventTypes = [
-
     "run.started",
-
     "run.completed",
-
     "run.failed",
 
     "node.started",
-
     "node.completed",
-
     "node.failed",
 
     "edge.activated",
 
     "worker.started",
-
     "worker.completed",
-
     "worker.failed",
 
     "agent.started",
-
     "agent.completed",
 
     "llm.started",
-
     "llm.completed",
 
     "tool.started",
-
     "tool.completed",
-
     "tool.failed",
   ];
 

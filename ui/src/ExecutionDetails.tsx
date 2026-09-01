@@ -1,6 +1,9 @@
 import type {
+  AgentExecution,
   GraphEvent,
+  LLMCall,
   NodeExecution,
+  ToolCall,
 } from "./types";
 
 interface Props {
@@ -8,7 +11,17 @@ interface Props {
     | NodeExecution
     | null;
 
-  events: GraphEvent[];
+  agentExecutions:
+    AgentExecution[];
+
+  llmCalls:
+    LLMCall[];
+
+  toolCalls:
+    ToolCall[];
+
+  events:
+    GraphEvent[];
 }
 
 function duration(
@@ -32,6 +45,21 @@ function duration(
   return `${end - start} ms`;
 }
 
+function callDuration(
+  startedAt: string,
+  completedAt?: string | null,
+): string {
+
+  if (!completedAt) {
+    return "running";
+  }
+
+  return `${
+    new Date(completedAt).getTime() -
+    new Date(startedAt).getTime()
+  } ms`;
+}
+
 function pretty(
   value: unknown,
 ): string {
@@ -45,6 +73,9 @@ function pretty(
 
 export function ExecutionDetails({
   execution,
+  agentExecutions,
+  llmCalls,
+  toolCalls,
   events,
 }: Props) {
 
@@ -57,9 +88,39 @@ export function ExecutionDetails({
     );
   }
 
+  const agents =
+    agentExecutions.filter(
+      agent =>
+        agent.nodeExecutionId ===
+        execution.id,
+    );
+
+  const agentIDs =
+    new Set(
+      agents.map(
+        agent => agent.id,
+      ),
+    );
+
+  const executionLLMs =
+    llmCalls.filter(
+      call =>
+        agentIDs.has(
+          call.agentExecutionId,
+        ),
+    );
+
+  const executionTools =
+    toolCalls.filter(
+      call =>
+        agentIDs.has(
+          call.agentExecutionId,
+        ),
+    );
+
   const executionEvents =
     events.filter(
-      (event) =>
+      event =>
         event.executionID ===
         execution.id,
     );
@@ -75,7 +136,7 @@ export function ExecutionDetails({
           </h2>
 
           <div className="details-subtitle">
-            {execution.workerId}
+            worker: {execution.workerId}
             {" · "}
             attempt #{execution.attempt}
           </div>
@@ -115,13 +176,12 @@ export function ExecutionDetails({
 
         <div>
           <span>
-            Started
+            Triggered by
           </span>
 
           <strong>
-            {new Date(
-              execution.startedAt,
-            ).toLocaleTimeString()}
+            {execution.triggeredBy.length}
+            {" "}activation(s)
           </strong>
         </div>
 
@@ -165,79 +225,277 @@ export function ExecutionDetails({
 
       </div>
 
+      {agents.map(
+        agent => {
+
+          const agentLLMs =
+            executionLLMs.filter(
+              call =>
+                call.agentExecutionId ===
+                agent.id,
+            );
+
+          const agentTools =
+            executionTools.filter(
+              call =>
+                call.agentExecutionId ===
+                agent.id,
+            );
+
+          return (
+            <section
+              key={agent.id}
+              className="agent-execution"
+            >
+
+              <div className="activity-header">
+
+                <div>
+
+                  <h3>
+                    Agent: {agent.agentId}
+                  </h3>
+
+                  <div className="details-subtitle">
+                    {agent.id}
+                  </div>
+
+                </div>
+
+                <div
+                  className={
+                    `status status-${agent.status}`
+                  }
+                >
+                  {agent.status}
+                </div>
+
+              </div>
+
+              <div className="activity-summary">
+
+                <div className="activity-card">
+                  <strong>
+                    LLM calls
+                  </strong>
+
+                  <span>
+                    {agentLLMs.length}
+                  </span>
+                </div>
+
+                <div className="activity-card">
+                  <strong>
+                    Tool calls
+                  </strong>
+
+                  <span>
+                    {agentTools.length}
+                  </span>
+                </div>
+
+                <div className="activity-card">
+                  <strong>
+                    Duration
+                  </strong>
+
+                  <span>
+                    {callDuration(
+                      agent.startedAt,
+                      agent.completedAt,
+                    )}
+                  </span>
+                </div>
+
+              </div>
+
+              <div className="nested-calls">
+
+                {agentLLMs.map(
+                  call => (
+                    <div
+                      key={call.id}
+                      className="nested-call llm-call"
+                    >
+
+                      <div className="nested-call-header">
+
+                        <span>
+                          LLM #{call.sequence}
+                        </span>
+
+                        <span
+                          className={
+                            `status status-${call.status}`
+                          }
+                        >
+                          {call.status}
+                        </span>
+
+                      </div>
+
+                      <div className="nested-call-meta">
+
+                        <span>
+                          {callDuration(
+                            call.startedAt,
+                            call.completedAt,
+                          )}
+                        </span>
+
+                        {call.requestedTool && (
+                          <span>
+                            tool →{" "}
+                            {call.requestedTool}
+                          </span>
+                        )}
+
+                      </div>
+
+                      <details>
+
+                        <summary>
+                          Messages / response
+                        </summary>
+
+                        <pre>
+                          {pretty({
+                            messages:
+                              call.messages,
+
+                            response:
+                              call.response,
+                          })}
+                        </pre>
+
+                      </details>
+
+                    </div>
+                  ),
+                )}
+
+                {agentTools.map(
+                  call => (
+                    <div
+                      key={call.id}
+                      className="nested-call tool-call"
+                    >
+
+                      <div className="nested-call-header">
+
+                        <span>
+                          Tool #{call.sequence}
+                          {" · "}
+                          {call.toolId}
+                        </span>
+
+                        <span
+                          className={
+                            `status status-${call.status}`
+                          }
+                        >
+                          {call.status}
+                        </span>
+
+                      </div>
+
+                      <div className="nested-call-meta">
+
+                        <span>
+                          {callDuration(
+                            call.startedAt,
+                            call.completedAt,
+                          )}
+                        </span>
+
+                      </div>
+
+                      <details>
+
+                        <summary>
+                          Input / output
+                        </summary>
+
+                        <pre>
+                          {pretty({
+                            input:
+                              call.input,
+
+                            output:
+                              call.output,
+                          })}
+                        </pre>
+
+                      </details>
+
+                    </div>
+                  ),
+                )}
+
+              </div>
+
+            </section>
+          );
+        },
+      )}
+
+      {agents.length === 0 && (
+        <div className="empty">
+          No agent execution for this node.
+        </div>
+      )}
+
       <section className="activity">
 
         <div className="activity-header">
 
           <h3>
-            Agent activity
+            Events for this execution
           </h3>
 
           <span>
             {executionEvents.length}
-            {" "}events
           </span>
 
         </div>
 
-        {executionEvents.length === 0 ? (
-          <div className="empty">
-            Waiting for activity...
-          </div>
-        ) : (
-          <div className="activity-list">
+        <div className="activity-list">
 
-            {executionEvents.map(
-              (event) => {
+          {executionEvents.map(
+            event => (
 
-                const time =
-                  new Date(
+              <div
+                key={event.id}
+                className="activity-row"
+              >
+
+                <span className="activity-time">
+                  {new Date(
                     event.time,
-                  ).toLocaleTimeString();
+                  ).toLocaleTimeString()}
+                </span>
 
-                return (
-                  <div
-                    key={event.id}
-                    className="activity-row"
-                  >
+                <span className="activity-type">
+                  {event.type}
+                </span>
 
-                    <span className="activity-time">
-                      {time}
-                    </span>
+                <span className="activity-agent">
+                  {event.agentID ?? ""}
+                </span>
 
-                    <span
-                      className={
-                        "activity-type"
-                      }
-                    >
-                      {event.type}
-                    </span>
+                <span className="activity-tool">
+                  {event.toolID ?? ""}
+                </span>
 
-                    {event.agentID && (
-                      <span className="activity-agent">
-                        {event.agentID}
-                      </span>
-                    )}
+                <span className="activity-message">
+                  {event.message ?? ""}
+                </span>
 
-                    {event.toolID && (
-                      <span className="activity-tool">
-                        {event.toolID}
-                      </span>
-                    )}
+              </div>
+            ),
+          )}
 
-                    {event.message && (
-                      <span className="activity-message">
-                        {event.message}
-                      </span>
-                    )}
-
-                  </div>
-                );
-              },
-            )}
-
-          </div>
-        )}
+        </div>
 
       </section>
 

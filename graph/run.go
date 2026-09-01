@@ -1,7 +1,7 @@
 package graph
 
 import (
-	"context"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -18,99 +18,26 @@ type Run struct {
 
 	Executions []*NodeExecution
 
+	EdgeActivations []*EdgeActivation
+
+	AgentExecutions []*AgentExecution
+
+	LLMCalls []*LLMCall
+
+	ToolCalls []*ToolCall
+
 	ActivatedNodes map[string]bool
-	ActivatedEdges map[string]bool
 
 	State State
 
 	mu sync.RWMutex
 }
 
-// ------------------------------------------------------------
-// Execution context
-// ------------------------------------------------------------
-
-type EventSink func(Event)
-
-type executionContextKey string
-
-const executionContextKeyName executionContextKey = "graph-execution"
-
-type ExecutionContext struct {
-	RunID       string
-	ExecutionID string
-	NodeID      string
-	WorkerID    string
-	EventSink   EventSink
-}
-
-func WithExecutionContext(
-	ctx context.Context,
-	execution ExecutionContext,
-) context.Context {
-
-	return context.WithValue(
-		ctx,
-		executionContextKeyName,
-		execution,
-	)
-}
-
-func GetExecutionContext(
-	ctx context.Context,
-) (ExecutionContext, bool) {
-
-	value := ctx.Value(
-		executionContextKeyName,
-	)
-
-	if value == nil {
-		return ExecutionContext{}, false
-	}
-
-	execution, ok :=
-		value.(ExecutionContext)
-
-	return execution, ok
-}
-
-// ------------------------------------------------------------
-// Emit an event through the current execution.
-// ------------------------------------------------------------
-
-func EmitEvent(
-	ctx context.Context,
-	event Event,
-) {
-
-	execution, ok :=
-		GetExecutionContext(ctx)
-
-	if !ok {
-		return
-	}
-
-	// Automatically attach execution metadata.
-	event.RunID = execution.RunID
-	event.NodeID = execution.NodeID
-	event.ExecutionID = execution.ExecutionID
-	event.WorkerID = execution.WorkerID
-
-	if execution.EventSink != nil {
-		execution.EventSink(event)
-	}
-}
-
-// ------------------------------------------------------------
-// Constructor
-// ------------------------------------------------------------
-
 func NewRun(
 	id string,
 	graph *Graph,
 	initial State,
 ) *Run {
-
 	return &Run{
 		ID: id,
 
@@ -125,16 +52,44 @@ func NewRun(
 			0,
 		),
 
-		ActivatedNodes: make(
-			map[string]bool,
+		EdgeActivations: make(
+			[]*EdgeActivation,
+			0,
 		),
 
-		ActivatedEdges: make(
+		AgentExecutions: make(
+			[]*AgentExecution,
+			0,
+		),
+
+		LLMCalls: make(
+			[]*LLMCall,
+			0,
+		),
+
+		ToolCalls: make(
+			[]*ToolCall,
+			0,
+		),
+
+		ActivatedNodes: make(
 			map[string]bool,
 		),
 
 		State: initial.Clone(),
 	}
+}
+
+// ------------------------------------------------------------
+// IDs
+// ------------------------------------------------------------
+
+func runtimeID(prefix string) string {
+	return fmt.Sprintf(
+		"%s-%d",
+		prefix,
+		time.Now().UnixNano(),
+	)
 }
 
 // ------------------------------------------------------------
@@ -153,7 +108,6 @@ func (r *Run) ActivateNode(
 func (r *Run) IsNodeActivated(
 	nodeID string,
 ) bool {
-
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -163,7 +117,6 @@ func (r *Run) IsNodeActivated(
 func (r *Run) ConsumeNodeActivation(
 	nodeID string,
 ) bool {
-
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -180,29 +133,6 @@ func (r *Run) ConsumeNodeActivation(
 }
 
 // ------------------------------------------------------------
-// Edge activation
-// ------------------------------------------------------------
-
-func (r *Run) ActivateEdge(
-	edgeID string,
-) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	r.ActivatedEdges[edgeID] = true
-}
-
-func (r *Run) IsEdgeActivated(
-	edgeID string,
-) bool {
-
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	return r.ActivatedEdges[edgeID]
-}
-
-// ------------------------------------------------------------
 // Executions
 // ------------------------------------------------------------
 
@@ -212,16 +142,16 @@ func (r *Run) AddExecution(
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.Executions = append(
-		r.Executions,
-		execution,
-	)
+	r.Executions =
+		append(
+			r.Executions,
+			execution,
+		)
 }
 
 func (r *Run) NextAttempt(
 	nodeID string,
 ) int {
-
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -235,6 +165,100 @@ func (r *Run) NextAttempt(
 	}
 
 	return attempt + 1
+}
+
+func (r *Run) HasRunningExecution(
+	nodeID string,
+) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, execution := range r.Executions {
+
+		if execution.NodeID == nodeID &&
+			execution.Status == StatusRunning {
+
+			return true
+		}
+	}
+
+	return false
+}
+
+// ------------------------------------------------------------
+// Edge activations
+// ------------------------------------------------------------
+
+func (r *Run) AddEdgeActivation(
+	activation *EdgeActivation,
+) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.EdgeActivations =
+		append(
+			r.EdgeActivations,
+			activation,
+		)
+}
+
+func (r *Run) PendingActivationsForNode(
+	nodeID string,
+) []*EdgeActivation {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var result []*EdgeActivation
+
+	for _, activation := range r.EdgeActivations {
+
+		if activation.ToNodeID != nodeID {
+			continue
+		}
+
+		if activation.ToExecutionID != nil {
+			continue
+		}
+
+		result =
+			append(
+				result,
+				activation,
+			)
+	}
+
+	return result
+}
+
+func (r *Run) ConsumeEdgeActivation(
+	activationID string,
+	executionID string,
+) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, activation := range r.EdgeActivations {
+
+		if activation.ID != activationID {
+			continue
+		}
+
+		if activation.ToExecutionID != nil {
+			return false
+		}
+
+		now := time.Now()
+
+		activation.ToExecutionID =
+			&executionID
+
+		activation.ConsumedAt =
+			&now
+
+		return true
+	}
+
+	return false
 }
 
 // ------------------------------------------------------------
@@ -251,11 +275,243 @@ func (r *Run) SetState(
 }
 
 func (r *Run) StateSnapshot() State {
-
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	return r.State.Clone()
+}
+
+// ------------------------------------------------------------
+// Agent execution
+// ------------------------------------------------------------
+
+func (r *Run) StartAgentExecution(
+	nodeExecutionID string,
+	agentID string,
+) *AgentExecution {
+	execution := &AgentExecution{
+		ID: runtimeID("agent"),
+
+		NodeExecutionID: nodeExecutionID,
+
+		AgentID: agentID,
+
+		Status: StatusRunning,
+
+		StartedAt: time.Now(),
+	}
+
+	r.mu.Lock()
+
+	r.AgentExecutions =
+		append(
+			r.AgentExecutions,
+			execution,
+		)
+
+	r.mu.Unlock()
+
+	return execution
+}
+
+func (r *Run) CompleteAgentExecution(
+	agentExecutionID string,
+	outputError error,
+) {
+	now := time.Now()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, execution := range r.AgentExecutions {
+
+		if execution.ID !=
+			agentExecutionID {
+
+			continue
+		}
+
+		execution.CompletedAt =
+			&now
+
+		if outputError != nil {
+
+			execution.Status =
+				StatusFailed
+
+			execution.Error =
+				outputError.Error()
+
+		} else {
+
+			execution.Status =
+				StatusCompleted
+		}
+
+		return
+	}
+}
+
+// ------------------------------------------------------------
+// LLM calls
+// ------------------------------------------------------------
+
+func (r *Run) StartLLMCall(
+	agentExecutionID string,
+	sequence int,
+	messages []MessageRecord,
+) *LLMCall {
+	call := &LLMCall{
+		ID: runtimeID("llm"),
+
+		AgentExecutionID: agentExecutionID,
+
+		Sequence: sequence,
+
+		Status: StatusRunning,
+
+		Messages: append(
+			[]MessageRecord(nil),
+			messages...,
+		),
+
+		StartedAt: time.Now(),
+	}
+
+	r.mu.Lock()
+
+	r.LLMCalls =
+		append(
+			r.LLMCalls,
+			call,
+		)
+
+	r.mu.Unlock()
+
+	return call
+}
+
+func (r *Run) CompleteLLMCall(
+	llmCallID string,
+	response string,
+	requestedTool string,
+	err error,
+) {
+	now := time.Now()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, call := range r.LLMCalls {
+
+		if call.ID != llmCallID {
+			continue
+		}
+
+		call.CompletedAt =
+			&now
+
+		call.Response =
+			response
+
+		call.RequestedTool =
+			requestedTool
+
+		if err != nil {
+
+			call.Status =
+				StatusFailed
+
+			call.Error =
+				err.Error()
+
+		} else {
+
+			call.Status =
+				StatusCompleted
+		}
+
+		return
+	}
+}
+
+// ------------------------------------------------------------
+// Tool calls
+// ------------------------------------------------------------
+
+func (r *Run) StartToolCall(
+	agentExecutionID string,
+	sequence int,
+	toolID string,
+	input map[string]any,
+) *ToolCall {
+	call := &ToolCall{
+		ID: runtimeID("tool"),
+
+		AgentExecutionID: agentExecutionID,
+
+		Sequence: sequence,
+
+		ToolID: toolID,
+
+		Status: StatusRunning,
+
+		Input: input,
+
+		StartedAt: time.Now(),
+	}
+
+	r.mu.Lock()
+
+	r.ToolCalls =
+		append(
+			r.ToolCalls,
+			call,
+		)
+
+	r.mu.Unlock()
+
+	return call
+}
+
+func (r *Run) CompleteToolCall(
+	toolCallID string,
+	output map[string]any,
+	err error,
+) {
+	now := time.Now()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, call := range r.ToolCalls {
+
+		if call.ID != toolCallID {
+			continue
+		}
+
+		call.CompletedAt =
+			&now
+
+		call.Output =
+			output
+
+		if err != nil {
+
+			call.Status =
+				StatusFailed
+
+			call.Error =
+				err.Error()
+
+		} else {
+
+			call.Status =
+				StatusCompleted
+		}
+
+		return
+	}
 }
 
 // ------------------------------------------------------------
@@ -273,46 +529,88 @@ type RunSnapshot struct {
 
 	Executions []*NodeExecution `json:"executions"`
 
-	ActivatedNodes map[string]bool `json:"activatedNodes"`
+	EdgeActivations []*EdgeActivation `json:"edgeActivations"`
 
-	ActivatedEdges map[string]bool `json:"activatedEdges"`
+	AgentExecutions []*AgentExecution `json:"agentExecutions"`
+
+	LLMCalls []*LLMCall `json:"llmCalls"`
+
+	ToolCalls []*ToolCall `json:"toolCalls"`
+
+	ActivatedNodes map[string]bool `json:"activatedNodes"`
 
 	State State `json:"state"`
 }
 
 func (r *Run) Snapshot() RunSnapshot {
-
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	executions := make(
-		[]*NodeExecution,
-		len(r.Executions),
-	)
+	executions :=
+		make(
+			[]*NodeExecution,
+			len(r.Executions),
+		)
 
 	copy(
 		executions,
 		r.Executions,
 	)
 
-	activatedNodes := make(
-		map[string]bool,
-		len(r.ActivatedNodes),
+	edgeActivations :=
+		make(
+			[]*EdgeActivation,
+			len(r.EdgeActivations),
+		)
+
+	copy(
+		edgeActivations,
+		r.EdgeActivations,
 	)
+
+	agentExecutions :=
+		make(
+			[]*AgentExecution,
+			len(r.AgentExecutions),
+		)
+
+	copy(
+		agentExecutions,
+		r.AgentExecutions,
+	)
+
+	llmCalls :=
+		make(
+			[]*LLMCall,
+			len(r.LLMCalls),
+		)
+
+	copy(
+		llmCalls,
+		r.LLMCalls,
+	)
+
+	toolCalls :=
+		make(
+			[]*ToolCall,
+			len(r.ToolCalls),
+		)
+
+	copy(
+		toolCalls,
+		r.ToolCalls,
+	)
+
+	activatedNodes :=
+		make(
+			map[string]bool,
+			len(r.ActivatedNodes),
+		)
 
 	for key, value := range r.ActivatedNodes {
 
-		activatedNodes[key] = value
-	}
-
-	activatedEdges := make(
-		map[string]bool,
-		len(r.ActivatedEdges),
-	)
-
-	for key, value := range r.ActivatedEdges {
-
-		activatedEdges[key] = value
+		activatedNodes[key] =
+			value
 	}
 
 	return RunSnapshot{
@@ -326,9 +624,15 @@ func (r *Run) Snapshot() RunSnapshot {
 
 		Executions: executions,
 
-		ActivatedNodes: activatedNodes,
+		EdgeActivations: edgeActivations,
 
-		ActivatedEdges: activatedEdges,
+		AgentExecutions: agentExecutions,
+
+		LLMCalls: llmCalls,
+
+		ToolCalls: toolCalls,
+
+		ActivatedNodes: activatedNodes,
 
 		State: r.State.Clone(),
 	}

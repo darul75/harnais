@@ -24,7 +24,7 @@ func (s State) Merge(other State) {
 }
 
 // ------------------------------------------------------------
-// Worker abstraction
+// Worker
 // ------------------------------------------------------------
 
 type WorkerInput struct {
@@ -45,13 +45,17 @@ type Worker interface {
 }
 
 // ------------------------------------------------------------
-// Graph node
+// Node
 // ------------------------------------------------------------
 
 type Node struct {
 	ID string
 
 	Worker Worker
+
+	// If true, all incoming runtime activations must be
+	// available before this node executes.
+	JoinAll bool
 }
 
 // ------------------------------------------------------------
@@ -64,7 +68,6 @@ type Edge struct {
 	From string
 	To   string
 
-	// nil = unconditional
 	Condition func(State) bool
 }
 
@@ -105,4 +108,186 @@ type NodeExecution struct {
 	StartedAt time.Time `json:"startedAt"`
 
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
+
+	TriggeredBy []string `json:"triggeredBy"`
+}
+
+// ------------------------------------------------------------
+// Runtime edge activation
+// ------------------------------------------------------------
+
+type EdgeActivation struct {
+	ID string `json:"id"`
+
+	EdgeID string `json:"edgeId"`
+
+	FromExecutionID string `json:"fromExecutionId"`
+
+	FromNodeID string `json:"fromNodeId"`
+
+	ToNodeID string `json:"toNodeId"`
+
+	CreatedAt time.Time `json:"createdAt"`
+
+	ToExecutionID *string `json:"toExecutionId,omitempty"`
+
+	ConsumedAt *time.Time `json:"consumedAt,omitempty"`
+}
+
+// ------------------------------------------------------------
+// Agent execution
+// ------------------------------------------------------------
+
+type AgentExecution struct {
+	ID string `json:"id"`
+
+	NodeExecutionID string `json:"nodeExecutionId"`
+
+	AgentID string `json:"agentId"`
+
+	Status Status `json:"status"`
+
+	StartedAt time.Time `json:"startedAt"`
+
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
+
+	Error string `json:"error,omitempty"`
+}
+
+// ------------------------------------------------------------
+// LLM call
+// ------------------------------------------------------------
+
+type MessageRecord struct {
+	Role string `json:"role"`
+
+	Content string `json:"content"`
+}
+
+type LLMCall struct {
+	ID string `json:"id"`
+
+	AgentExecutionID string `json:"agentExecutionId"`
+
+	Sequence int `json:"sequence"`
+
+	Status Status `json:"status"`
+
+	Messages []MessageRecord `json:"messages,omitempty"`
+
+	Response string `json:"response,omitempty"`
+
+	RequestedTool string `json:"requestedTool,omitempty"`
+
+	StartedAt time.Time `json:"startedAt"`
+
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
+
+	Error string `json:"error,omitempty"`
+}
+
+// ------------------------------------------------------------
+// Tool call
+// ------------------------------------------------------------
+
+type ToolCall struct {
+	ID string `json:"id"`
+
+	AgentExecutionID string `json:"agentExecutionId"`
+
+	Sequence int `json:"sequence"`
+
+	ToolID string `json:"toolId"`
+
+	Status Status `json:"status"`
+
+	Input map[string]any `json:"input,omitempty"`
+
+	Output map[string]any `json:"output,omitempty"`
+
+	StartedAt time.Time `json:"startedAt"`
+
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
+
+	Error string `json:"error,omitempty"`
+}
+
+// ------------------------------------------------------------
+// Event context
+// ------------------------------------------------------------
+
+type EventSink func(Event)
+
+type executionContextKey string
+
+const executionContextKeyName executionContextKey = "graph-execution"
+
+type ExecutionContext struct {
+	RunID string
+
+	ExecutionID string
+
+	NodeID string
+
+	WorkerID string
+
+	Run *Run
+
+	EventSink EventSink
+}
+
+func WithExecutionContext(
+	ctx context.Context,
+	execution ExecutionContext,
+) context.Context {
+	return context.WithValue(
+		ctx,
+		executionContextKeyName,
+		execution,
+	)
+}
+
+func GetExecutionContext(
+	ctx context.Context,
+) (ExecutionContext, bool) {
+	value := ctx.Value(
+		executionContextKeyName,
+	)
+
+	if value == nil {
+		return ExecutionContext{}, false
+	}
+
+	execution, ok :=
+		value.(ExecutionContext)
+
+	return execution, ok
+}
+
+func EmitEvent(
+	ctx context.Context,
+	event Event,
+) {
+	execution, ok :=
+		GetExecutionContext(ctx)
+
+	if !ok {
+		return
+	}
+
+	event.RunID =
+		execution.RunID
+
+	event.NodeID =
+		execution.NodeID
+
+	event.ExecutionID =
+		execution.ExecutionID
+
+	event.WorkerID =
+		execution.WorkerID
+
+	if execution.EventSink != nil {
+		execution.EventSink(event)
+	}
 }

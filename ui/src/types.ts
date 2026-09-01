@@ -46,6 +46,88 @@ export interface NodeExecution {
 
   startedAt: string;
   completedAt?: string | null;
+
+  triggeredBy: string[];
+}
+
+export interface AgentExecution {
+  id: string;
+  nodeExecutionId: string;
+  agentId: string;
+
+  status: NodeStatus;
+
+  startedAt: string;
+  completedAt?: string | null;
+
+  error?: string;
+}
+
+export interface MessageRecord {
+  role: string;
+  content: string;
+}
+
+export interface LLMCall {
+  id: string;
+
+  agentExecutionId: string;
+
+  sequence: number;
+
+  status: NodeStatus;
+
+  messages: MessageRecord[];
+
+  response?: string;
+
+  requestedTool?: string;
+
+  startedAt: string;
+
+  completedAt?: string | null;
+
+  error?: string;
+}
+
+export interface ToolCall {
+  id: string;
+
+  agentExecutionId: string;
+
+  sequence: number;
+
+  toolId: string;
+
+  status: NodeStatus;
+
+  input: Record<string, unknown>;
+
+  output: Record<string, unknown>;
+
+  startedAt: string;
+
+  completedAt?: string | null;
+
+  error?: string;
+}
+
+export interface EdgeActivation {
+  id: string;
+
+  edgeId: string;
+
+  fromExecutionId: string;
+
+  fromNodeId: string;
+
+  toNodeId: string;
+
+  createdAt: string;
+
+  toExecutionId?: string | null;
+
+  consumedAt?: string | null;
 }
 
 export interface GraphEvent {
@@ -62,6 +144,8 @@ export interface GraphEvent {
   workerID?: string;
   agentID?: string;
   toolID?: string;
+
+  activationID?: string;
 
   message?: string;
 
