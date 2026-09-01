@@ -33,6 +33,7 @@ func NewServer(
 }
 
 func (s *Server) Handler() http.Handler {
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc(
@@ -69,7 +70,7 @@ func (s *Server) Handler() http.Handler {
 }
 
 // ------------------------------------------------------------
-// POST /api/runs
+// Create
 // ------------------------------------------------------------
 
 type createRunRequest struct {
@@ -84,6 +85,7 @@ func (s *Server) createRun(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
+
 	var request createRunRequest
 
 	if r.ContentLength != 0 {
@@ -107,18 +109,20 @@ func (s *Server) createRun(
 	}
 
 	if s.StartRun == nil {
+
 		http.Error(
 			w,
-			"run starter is not configured",
+			"run starter not configured",
 			http.StatusInternalServerError,
 		)
 
 		return
 	}
 
-	run := s.StartRun(
-		request.State,
-	)
+	run :=
+		s.StartRun(
+			request.State,
+		)
 
 	writeJSON(
 		w,
@@ -129,18 +133,22 @@ func (s *Server) createRun(
 }
 
 // ------------------------------------------------------------
-// GET /api/runs/:runID
+// Run
 // ------------------------------------------------------------
 
 func (s *Server) getRun(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	runID := r.PathValue("runID")
 
-	run, exists := s.Runs.Get(runID)
+	runID :=
+		r.PathValue("runID")
+
+	run, exists :=
+		s.Runs.Get(runID)
 
 	if !exists {
+
 		http.Error(
 			w,
 			"run not found",
@@ -150,32 +158,40 @@ func (s *Server) getRun(
 		return
 	}
 
-	snapshot := run.Snapshot()
+	snapshot :=
+		run.Snapshot()
 
 	writeJSON(
 		w,
 		map[string]any{
-			"id":          snapshot.ID,
-			"status":      snapshot.Status,
-			"startedAt":   snapshot.StartedAt,
+			"id": snapshot.ID,
+
+			"status": snapshot.Status,
+
+			"startedAt": snapshot.StartedAt,
+
 			"completedAt": snapshot.CompletedAt,
 		},
 	)
 }
 
 // ------------------------------------------------------------
-// GET /api/runs/:runID/graph
+// Graph
 // ------------------------------------------------------------
 
 func (s *Server) getGraph(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	runID := r.PathValue("runID")
 
-	run, exists := s.Runs.Get(runID)
+	runID :=
+		r.PathValue("runID")
+
+	run, exists :=
+		s.Runs.Get(runID)
 
 	if !exists {
+
 		http.Error(
 			w,
 			"run not found",
@@ -202,6 +218,7 @@ func (s *Server) getGraph(
 	)
 
 	for id := range run.Graph.Nodes {
+
 		nodes = append(
 			nodes,
 			NodeDTO{
@@ -217,6 +234,7 @@ func (s *Server) getGraph(
 	)
 
 	for _, edge := range run.Graph.Edges {
+
 		edges = append(
 			edges,
 			EdgeDTO{
@@ -237,18 +255,22 @@ func (s *Server) getGraph(
 }
 
 // ------------------------------------------------------------
-// GET /api/runs/:runID/state
+// State
 // ------------------------------------------------------------
 
 func (s *Server) getState(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	runID := r.PathValue("runID")
 
-	run, exists := s.Runs.Get(runID)
+	runID :=
+		r.PathValue("runID")
+
+	run, exists :=
+		s.Runs.Get(runID)
 
 	if !exists {
+
 		http.Error(
 			w,
 			"run not found",
@@ -265,18 +287,22 @@ func (s *Server) getState(
 }
 
 // ------------------------------------------------------------
-// GET /api/runs/:runID/executions
+// Executions
 // ------------------------------------------------------------
 
 func (s *Server) getExecutions(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	runID := r.PathValue("runID")
 
-	run, exists := s.Runs.Get(runID)
+	runID :=
+		r.PathValue("runID")
+
+	run, exists :=
+		s.Runs.Get(runID)
 
 	if !exists {
+
 		http.Error(
 			w,
 			"run not found",
@@ -286,7 +312,8 @@ func (s *Server) getExecutions(
 		return
 	}
 
-	snapshot := run.Snapshot()
+	snapshot :=
+		run.Snapshot()
 
 	writeJSON(
 		w,
@@ -295,18 +322,22 @@ func (s *Server) getExecutions(
 }
 
 // ------------------------------------------------------------
-// GET /api/runs/:runID/events
+// SSE
 // ------------------------------------------------------------
 
 func (s *Server) events(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	runID := r.PathValue("runID")
 
-	_, exists := s.Runs.Get(runID)
+	runID :=
+		r.PathValue("runID")
+
+	_, exists :=
+		s.Runs.Get(runID)
 
 	if !exists {
+
 		http.Error(
 			w,
 			"run not found",
@@ -336,9 +367,11 @@ func (s *Server) events(
 		"no",
 	)
 
-	flusher, ok := w.(http.Flusher)
+	flusher, ok :=
+		w.(http.Flusher)
 
 	if !ok {
+
 		http.Error(
 			w,
 			"SSE not supported",
@@ -348,23 +381,20 @@ func (s *Server) events(
 		return
 	}
 
-	// --------------------------------------------------
-	// Replay history
-	// --------------------------------------------------
-
 	lastEventID := uint64(0)
 
-	if value := r.Header.Get("Last-Event-ID"); value != "" {
-		lastEventID, _ = strconv.ParseUint(
-			value,
-			10,
-			64,
-		)
+	if value :=
+		r.Header.Get("Last-Event-ID"); value != "" {
+
+		lastEventID, _ =
+			strconv.ParseUint(
+				value,
+				10,
+				64,
+			)
 	}
 
-	history := s.Bus.History(runID)
-
-	for _, event := range history {
+	for _, event := range s.Bus.History(runID) {
 
 		if event.ID <= lastEventID {
 			continue
@@ -377,10 +407,6 @@ func (s *Server) events(
 	}
 
 	flusher.Flush()
-
-	// --------------------------------------------------
-	// Subscribe
-	// --------------------------------------------------
 
 	eventChannel, unsubscribe :=
 		s.Bus.Subscribe(runID)
@@ -401,7 +427,8 @@ func (s *Server) events(
 		case <-r.Context().Done():
 			return
 
-		case event, ok := <-eventChannel:
+		case event, ok :=
+			<-eventChannel:
 
 			if !ok {
 				return
@@ -417,15 +444,13 @@ func (s *Server) events(
 	}
 }
 
-// ------------------------------------------------------------
-// SSE
-// ------------------------------------------------------------
-
 func writeSSE(
 	w http.ResponseWriter,
 	event graph.Event,
 ) {
-	data, err := json.Marshal(event)
+
+	data, err :=
+		json.Marshal(event)
 
 	if err != nil {
 		return
@@ -450,25 +475,20 @@ func writeSSE(
 	)
 }
 
-// ------------------------------------------------------------
-// JSON
-// ------------------------------------------------------------
-
 func writeJSON(
 	w http.ResponseWriter,
 	value any,
 ) {
+
 	w.Header().Set(
 		"Content-Type",
 		"application/json",
 	)
 
-	_ = json.NewEncoder(w).Encode(value)
+	_ = json.NewEncoder(
+		w,
+	).Encode(value)
 }
-
-// ------------------------------------------------------------
-// CORS
-// ------------------------------------------------------------
 
 func withCORS(
 	next http.Handler,
@@ -495,7 +515,9 @@ func withCORS(
 				"GET, POST, OPTIONS",
 			)
 
-			if r.Method == http.MethodOptions {
+			if r.Method ==
+				http.MethodOptions {
+
 				w.WriteHeader(
 					http.StatusNoContent,
 				)
@@ -503,7 +525,10 @@ func withCORS(
 				return
 			}
 
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(
+				w,
+				r,
+			)
 		},
 	)
 }

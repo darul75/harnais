@@ -10,7 +10,9 @@ import (
 type EventType string
 
 const (
-	EventRunStarted EventType = "run.started"
+	EventRunStarted   EventType = "run.started"
+	EventRunCompleted EventType = "run.completed"
+	EventRunFailed    EventType = "run.failed"
 
 	EventNodeStarted   EventType = "node.started"
 	EventNodeCompleted EventType = "node.completed"
@@ -18,8 +20,19 @@ const (
 
 	EventEdgeActivated EventType = "edge.activated"
 
-	EventRunCompleted EventType = "run.completed"
-	EventRunFailed    EventType = "run.failed"
+	EventWorkerStarted   EventType = "worker.started"
+	EventWorkerCompleted EventType = "worker.completed"
+	EventWorkerFailed    EventType = "worker.failed"
+
+	EventAgentStarted   EventType = "agent.started"
+	EventAgentCompleted EventType = "agent.completed"
+
+	EventLLMStarted   EventType = "llm.started"
+	EventLLMCompleted EventType = "llm.completed"
+
+	EventToolStarted   EventType = "tool.started"
+	EventToolCompleted EventType = "tool.completed"
+	EventToolFailed    EventType = "tool.failed"
 )
 
 type Event struct {
@@ -35,6 +48,12 @@ type Event struct {
 
 	ExecutionID string `json:"executionID,omitempty"`
 
+	WorkerID string `json:"workerID,omitempty"`
+
+	AgentID string `json:"agentID,omitempty"`
+
+	ToolID string `json:"toolID,omitempty"`
+
 	Message string `json:"message,omitempty"`
 
 	Data map[string]any `json:"data,omitempty"`
@@ -45,7 +64,7 @@ type EventHandler func(Event)
 type Executor struct {
 	OnEvent EventHandler
 
-	// Called immediately after the Run is created.
+	// Called as soon as Run is created.
 	OnRun func(*Run)
 }
 
@@ -59,16 +78,50 @@ func NewExecutor(
 	}
 }
 
-func (e *Executor) emit(
-	event Event,
-) {
+func (e *Executor) emit(event Event) {
 	if e.OnEvent != nil {
 		e.OnEvent(event)
 	}
 }
 
 // ------------------------------------------------------------
-// Run
+// Start asynchronously
+// ------------------------------------------------------------
+
+func (e *Executor) Start(
+	ctx context.Context,
+	g *Graph,
+	initial State,
+) *Run {
+
+	runID := fmt.Sprintf(
+		"run-%d",
+		time.Now().UnixNano(),
+	)
+
+	run := NewRun(
+		runID,
+		g,
+		initial,
+	)
+
+	if e.OnRun != nil {
+		e.OnRun(run)
+	}
+
+	go func() {
+		_, _, _ = e.run(
+			ctx,
+			run,
+			initial,
+		)
+	}()
+
+	return run
+}
+
+// ------------------------------------------------------------
+// Synchronous Run
 // ------------------------------------------------------------
 
 func (e *Executor) Run(
@@ -85,6 +138,7 @@ func (e *Executor) Run(
 	run := NewRun(
 		runID,
 		g,
+		initial,
 	)
 
 	if e.OnRun != nil {
@@ -97,6 +151,10 @@ func (e *Executor) Run(
 		initial,
 	)
 }
+
+// ------------------------------------------------------------
+// Internal execution
+// ------------------------------------------------------------
 
 func (e *Executor) run(
 	ctx context.Context,
@@ -115,7 +173,7 @@ func (e *Executor) run(
 	})
 
 	// --------------------------------------------------
-	// Activate roots.
+	// Activate graph roots.
 	// --------------------------------------------------
 
 	for nodeID := range run.Graph.Nodes {
@@ -152,7 +210,6 @@ func (e *Executor) run(
 
 		ready :=
 			e.findReadyNodes(
-				run.Graph,
 				run,
 			)
 
@@ -211,6 +268,10 @@ func (e *Executor) run(
 			return state, run, err
 		}
 
+		// --------------------------------------------------
+		// Merge all outputs only after the wave completes.
+		// --------------------------------------------------
+
 		for _, execution := range results {
 
 			state.Merge(
@@ -221,20 +282,7 @@ func (e *Executor) run(
 				state,
 			)
 
-			e.emit(Event{
-				Time:        time.Now(),
-				RunID:       run.ID,
-				Type:        EventNodeCompleted,
-				NodeID:      execution.NodeID,
-				ExecutionID: execution.ID,
-
-				Data: map[string]any{
-					"attempt": execution.Attempt,
-				},
-			})
-
 			e.activateOutgoingEdges(
-				run.Graph,
 				run,
 				execution.NodeID,
 				state,
@@ -243,57 +291,21 @@ func (e *Executor) run(
 	}
 }
 
-func (e *Executor) Start(
-	ctx context.Context,
-	g *Graph,
-	initial State,
-) *Run {
-
-	runID := fmt.Sprintf(
-		"run-%d",
-		time.Now().UnixNano(),
-	)
-
-	run := NewRun(
-		runID,
-		g,
-	)
-
-	if e.OnRun != nil {
-		e.OnRun(run)
-	}
-
-	go func() {
-
-		_, _, err :=
-			e.run(
-				ctx,
-				run,
-				initial,
-			)
-
-		if err != nil {
-			return
-		}
-	}()
-
-	return run
-}
-
 // ------------------------------------------------------------
-// Find nodes ready to execute.
+// Scheduler
 // ------------------------------------------------------------
 
 func (e *Executor) findReadyNodes(
-	g *Graph,
 	run *Run,
 ) []*Node {
 
 	var ready []*Node
 
-	for nodeID, node := range g.Nodes {
+	for nodeID, node := range run.Graph.Nodes {
 
-		if !run.IsNodeActivated(nodeID) {
+		if !run.IsNodeActivated(
+			nodeID,
+		) {
 			continue
 		}
 
@@ -305,15 +317,16 @@ func (e *Executor) findReadyNodes(
 		}
 
 		if !e.dependenciesCompleted(
-			g,
 			run,
 			nodeID,
 		) {
 			continue
 		}
 
-		// Consume the activation.
-		if !run.ConsumeNodeActivation(nodeID) {
+		// Consume one activation.
+		if !run.ConsumeNodeActivation(
+			nodeID,
+		) {
 			continue
 		}
 
@@ -326,20 +339,17 @@ func (e *Executor) findReadyNodes(
 	return ready
 }
 
-// ------------------------------------------------------------
-// Dependency handling.
-// ------------------------------------------------------------
-
 func (e *Executor) dependenciesCompleted(
-	g *Graph,
 	run *Run,
 	nodeID string,
 ) bool {
 
-	for _, edge := range g.Incoming(nodeID) {
+	for _, edge := range run.Graph.Incoming(nodeID) {
 
-		// Ignore edges which were never selected.
-		if !run.IsEdgeActivated(edge.ID) {
+		// Only selected edges matter.
+		if !run.IsEdgeActivated(
+			edge.ID,
+		) {
 			continue
 		}
 
@@ -365,7 +375,8 @@ func (e *Executor) hasCompletedExecution(
 	for _, execution := range run.Executions {
 
 		if execution.NodeID == nodeID &&
-			execution.Status == StatusCompleted {
+			execution.Status ==
+				StatusCompleted {
 
 			return true
 		}
@@ -385,7 +396,8 @@ func (e *Executor) isNodeRunning(
 	for _, execution := range run.Executions {
 
 		if execution.NodeID == nodeID &&
-			execution.Status == StatusRunning {
+			execution.Status ==
+				StatusRunning {
 
 			return true
 		}
@@ -395,22 +407,23 @@ func (e *Executor) isNodeRunning(
 }
 
 // ------------------------------------------------------------
-// Evaluate outgoing edges.
+// Routing
 // ------------------------------------------------------------
 
 func (e *Executor) activateOutgoingEdges(
-	g *Graph,
 	run *Run,
 	nodeID string,
 	state State,
 ) {
 
-	for _, edge := range g.Outgoing(nodeID) {
+	for _, edge := range run.Graph.Outgoing(nodeID) {
 
 		activate := true
 
 		if edge.Condition != nil {
-			activate = edge.Condition(state)
+
+			activate =
+				edge.Condition(state)
 		}
 
 		if !activate {
@@ -446,7 +459,7 @@ func (e *Executor) activateOutgoingEdges(
 }
 
 // ------------------------------------------------------------
-// Execute one wave concurrently.
+// Execute wave
 // ------------------------------------------------------------
 
 func (e *Executor) executeWave(
@@ -482,6 +495,7 @@ func (e *Executor) executeWave(
 			defer wg.Done()
 
 			execution := &NodeExecution{
+
 				ID: fmt.Sprintf(
 					"%s-%d",
 					node.ID,
@@ -489,6 +503,8 @@ func (e *Executor) executeWave(
 				),
 
 				NodeID: node.ID,
+
+				WorkerID: node.Worker.ID(),
 
 				Attempt: run.NextAttempt(
 					node.ID,
@@ -505,43 +521,100 @@ func (e *Executor) executeWave(
 				execution,
 			)
 
+			execCtx :=
+				WithExecutionContext(
+					ctx,
+					ExecutionContext{
+						RunID: run.ID,
+
+						ExecutionID: execution.ID,
+
+						NodeID: node.ID,
+					},
+				)
+
 			e.emit(Event{
-				Time:        time.Now(),
-				RunID:       run.ID,
-				Type:        EventNodeStarted,
-				NodeID:      node.ID,
+				Time: time.Now(),
+
+				RunID: run.ID,
+
+				Type: EventNodeStarted,
+
+				NodeID: node.ID,
+
 				ExecutionID: execution.ID,
+
+				WorkerID: node.Worker.ID(),
 
 				Data: map[string]any{
 					"attempt": execution.Attempt,
 				},
 			})
 
-			output, err := node.Execute(
-				ctx,
-				execution.Input.Clone(),
-			)
+			e.emit(Event{
+				Time: time.Now(),
+
+				RunID: run.ID,
+
+				Type: EventWorkerStarted,
+
+				NodeID: node.ID,
+
+				ExecutionID: execution.ID,
+
+				WorkerID: node.Worker.ID(),
+			})
+
+			result, err :=
+				node.Worker.Run(
+					execCtx,
+
+					WorkerInput{
+						State: execution.Input.Clone(),
+					},
+				)
 
 			if err != nil {
 
-				execution.Status = StatusFailed
-				execution.Error = err.Error()
+				execution.Status =
+					StatusFailed
+
+				execution.Error =
+					err.Error()
 
 				now := time.Now()
 
-				execution.CompletedAt = &now
+				execution.CompletedAt =
+					&now
 
 				e.emit(Event{
-					Time:        now,
-					RunID:       run.ID,
-					Type:        EventNodeFailed,
-					NodeID:      node.ID,
-					ExecutionID: execution.ID,
-					Message:     err.Error(),
+					Time: now,
 
-					Data: map[string]any{
-						"attempt": execution.Attempt,
-					},
+					RunID: run.ID,
+
+					Type: EventWorkerFailed,
+
+					NodeID: node.ID,
+
+					ExecutionID: execution.ID,
+
+					WorkerID: node.Worker.ID(),
+
+					Message: err.Error(),
+				})
+
+				e.emit(Event{
+					Time: now,
+
+					RunID: run.ID,
+
+					Type: EventNodeFailed,
+
+					NodeID: node.ID,
+
+					ExecutionID: execution.ID,
+
+					Message: err.Error(),
 				})
 
 				errs <- fmt.Errorf(
@@ -553,12 +626,30 @@ func (e *Executor) executeWave(
 				return
 			}
 
-			execution.Output = output
-			execution.Status = StatusCompleted
+			execution.Output =
+				result.State
+
+			execution.Status =
+				StatusCompleted
 
 			now := time.Now()
 
-			execution.CompletedAt = &now
+			execution.CompletedAt =
+				&now
+
+			e.emit(Event{
+				Time: now,
+
+				RunID: run.ID,
+
+				Type: EventWorkerCompleted,
+
+				NodeID: node.ID,
+
+				ExecutionID: execution.ID,
+
+				WorkerID: node.Worker.ID(),
+			})
 
 			mu.Lock()
 
@@ -568,7 +659,6 @@ func (e *Executor) executeWave(
 			)
 
 			mu.Unlock()
-
 		}()
 	}
 
@@ -585,7 +675,7 @@ func (e *Executor) executeWave(
 }
 
 // ------------------------------------------------------------
-// Finished?
+// Finished
 // ------------------------------------------------------------
 
 func (e *Executor) isFinished(
@@ -595,15 +685,15 @@ func (e *Executor) isFinished(
 	run.mu.RLock()
 	defer run.mu.RUnlock()
 
-	// Something is still active/running.
 	for _, execution := range run.Executions {
 
-		if execution.Status == StatusRunning {
+		if execution.Status ==
+			StatusRunning {
+
 			return false
 		}
 	}
 
-	// Something has been activated but not executed.
 	if len(run.ActivatedNodes) > 0 {
 		return false
 	}
@@ -612,7 +702,7 @@ func (e *Executor) isFinished(
 }
 
 // ------------------------------------------------------------
-// Fail the run.
+// Failure
 // ------------------------------------------------------------
 
 func (e *Executor) failRun(
@@ -624,8 +714,11 @@ func (e *Executor) failRun(
 
 	run.mu.Lock()
 
-	run.Status = StatusFailed
-	run.CompletedAt = &now
+	run.Status =
+		StatusFailed
+
+	run.CompletedAt =
+		&now
 
 	run.mu.Unlock()
 

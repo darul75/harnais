@@ -5,10 +5,15 @@ import type {
   WorkflowState,
 } from "./types";
 
-const API = "http://localhost:8080/api";
+const API =
+  "http://localhost:8080/api";
 
-async function get<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+async function get<T>(
+  url: string,
+): Promise<T> {
+
+  const response =
+    await fetch(url);
 
   if (!response.ok) {
     throw new Error(
@@ -22,15 +27,23 @@ async function get<T>(url: string): Promise<T> {
 export async function createRun(
   state: Record<string, unknown> = {},
 ): Promise<{ runId: string }> {
-  const response = await fetch(`${API}/runs`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      state,
-    }),
-  });
+
+  const response =
+    await fetch(
+      `${API}/runs`,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        body: JSON.stringify({
+          state,
+        }),
+      },
+    );
 
   if (!response.ok) {
     throw new Error(
@@ -41,7 +54,10 @@ export async function createRun(
   return response.json();
 }
 
-export function getRun(runId: string): Promise<Run> {
+export function getRun(
+  runId: string,
+): Promise<Run> {
+
   return get<Run>(
     `${API}/runs/${runId}`,
   );
@@ -50,6 +66,7 @@ export function getRun(runId: string): Promise<Run> {
 export function getGraph(
   runId: string,
 ): Promise<GraphDefinition> {
+
   return get<GraphDefinition>(
     `${API}/runs/${runId}/graph`,
   );
@@ -58,6 +75,7 @@ export function getGraph(
 export function getState(
   runId: string,
 ): Promise<WorkflowState> {
+
   return get<WorkflowState>(
     `${API}/runs/${runId}/state`,
   );
@@ -66,6 +84,7 @@ export function getState(
 export function getExecutions(
   runId: string,
 ): Promise<NodeExecution[]> {
+
   return get<NodeExecution[]>(
     `${API}/runs/${runId}/executions`,
   );
@@ -73,32 +92,58 @@ export function getExecutions(
 
 export function subscribeToEvents(
   runId: string,
-  onEvent: (event: MessageEvent) => void,
-  onError?: (event: Event) => void,
+  onEvent: (
+    event: MessageEvent,
+  ) => void,
+  onError?: (
+    event: Event,
+  ) => void,
 ): EventSource {
-  const source = new EventSource(
-    `${API}/runs/${runId}/events`,
-  );
 
-  // IMPORTANT:
-  // The Go server sends named SSE events:
-  //
-  //   event: node.started
-  //   event: node.completed
-  //
-  // Therefore source.onmessage does NOT receive them.
+  const source =
+    new EventSource(
+      `${API}/runs/${runId}/events`,
+    );
 
   const eventTypes = [
+
     "run.started",
-    "node.started",
-    "node.completed",
-    "node.failed",
-    "edge.activated",
+
     "run.completed",
+
     "run.failed",
+
+    "node.started",
+
+    "node.completed",
+
+    "node.failed",
+
+    "edge.activated",
+
+    "worker.started",
+
+    "worker.completed",
+
+    "worker.failed",
+
+    "agent.started",
+
+    "agent.completed",
+
+    "llm.started",
+
+    "llm.completed",
+
+    "tool.started",
+
+    "tool.completed",
+
+    "tool.failed",
   ];
 
   for (const eventType of eventTypes) {
+
     source.addEventListener(
       eventType,
       onEvent,

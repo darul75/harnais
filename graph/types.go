@@ -24,16 +24,34 @@ func (s State) Merge(other State) {
 }
 
 // ------------------------------------------------------------
-// Node
+// Worker abstraction
+// ------------------------------------------------------------
+
+type WorkerInput struct {
+	State State
+}
+
+type WorkerResult struct {
+	State State
+}
+
+type Worker interface {
+	ID() string
+
+	Run(
+		ctx context.Context,
+		input WorkerInput,
+	) (WorkerResult, error)
+}
+
+// ------------------------------------------------------------
+// Graph node
 // ------------------------------------------------------------
 
 type Node struct {
 	ID string
 
-	Execute func(
-		ctx context.Context,
-		state State,
-	) (State, error)
+	Worker Worker
 }
 
 // ------------------------------------------------------------
@@ -46,7 +64,7 @@ type Edge struct {
 	From string
 	To   string
 
-	// nil = unconditional edge
+	// nil = unconditional
 	Condition func(State) bool
 }
 
@@ -65,18 +83,14 @@ const (
 
 // ------------------------------------------------------------
 // Node execution
-//
-// A node may execute multiple times:
-//
-// coder attempt #1
-// coder attempt #2
-// coder attempt #3
 // ------------------------------------------------------------
 
 type NodeExecution struct {
 	ID string `json:"id"`
 
 	NodeID string `json:"nodeId"`
+
+	WorkerID string `json:"workerId"`
 
 	Attempt int `json:"attempt"`
 

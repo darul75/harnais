@@ -28,10 +28,6 @@ func NewEventBus() *EventBus {
 	}
 }
 
-// ------------------------------------------------------------
-// Publish
-// ------------------------------------------------------------
-
 func (b *EventBus) Publish(
 	event graph.Event,
 ) {
@@ -40,7 +36,8 @@ func (b *EventBus) Publish(
 
 	b.nextID++
 
-	event.ID = b.nextID
+	event.ID =
+		b.nextID
 
 	b.history[event.RunID] =
 		append(
@@ -48,16 +45,16 @@ func (b *EventBus) Publish(
 			event,
 		)
 
-	subscribers :=
-		b.subscribers[event.RunID]
-
 	channels := make(
 		[]chan graph.Event,
 		0,
-		len(subscribers),
+		len(
+			b.subscribers[event.RunID],
+		),
 	)
 
-	for channel := range subscribers {
+	for channel := range b.subscribers[event.RunID] {
+
 		channels = append(
 			channels,
 			channel,
@@ -66,7 +63,6 @@ func (b *EventBus) Publish(
 
 	b.mu.Unlock()
 
-	// Never hold the lock while sending.
 	for _, channel := range channels {
 
 		select {
@@ -74,14 +70,10 @@ func (b *EventBus) Publish(
 		case channel <- event:
 
 		default:
-			// Slow consumer.
+			// Slow subscriber.
 		}
 	}
 }
-
-// ------------------------------------------------------------
-// Subscribe
-// ------------------------------------------------------------
 
 func (b *EventBus) Subscribe(
 	runID string,
@@ -102,7 +94,8 @@ func (b *EventBus) Subscribe(
 			)
 	}
 
-	b.subscribers[runID][channel] = struct{}{}
+	b.subscribers[runID][channel] =
+		struct{}{}
 
 	b.mu.Unlock()
 
@@ -114,7 +107,9 @@ func (b *EventBus) Subscribe(
 		subscribers :=
 			b.subscribers[runID]
 
-		if _, exists := subscribers[channel]; !exists {
+		if _, exists :=
+			subscribers[channel]; !exists {
+
 			return
 		}
 
@@ -129,10 +124,6 @@ func (b *EventBus) Subscribe(
 	return channel, unsubscribe
 }
 
-// ------------------------------------------------------------
-// Event history
-// ------------------------------------------------------------
-
 func (b *EventBus) History(
 	runID string,
 ) []graph.Event {
@@ -140,7 +131,8 @@ func (b *EventBus) History(
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	events := b.history[runID]
+	events :=
+		b.history[runID]
 
 	result := make(
 		[]graph.Event,

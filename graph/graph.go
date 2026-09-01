@@ -14,6 +14,7 @@ func NewGraph() *Graph {
 }
 
 func (g *Graph) AddNode(node *Node) error {
+
 	if node == nil {
 		return fmt.Errorf("node cannot be nil")
 	}
@@ -22,9 +23,9 @@ func (g *Graph) AddNode(node *Node) error {
 		return fmt.Errorf("node ID cannot be empty")
 	}
 
-	if node.Execute == nil {
+	if node.Worker == nil {
 		return fmt.Errorf(
-			"node %q has no Execute function",
+			"node %q has no worker",
 			node.ID,
 		)
 	}
@@ -72,16 +73,21 @@ func (g *Graph) AddConditionalEdge(
 		)
 	}
 
-	g.Edges = append(g.Edges, Edge{
-		ID: fmt.Sprintf(
-			"%s->%s",
-			from,
-			to,
-		),
-		From:      from,
-		To:        to,
-		Condition: condition,
-	})
+	g.Edges = append(
+		g.Edges,
+		Edge{
+			ID: fmt.Sprintf(
+				"%s->%s",
+				from,
+				to,
+			),
+
+			From: from,
+			To:   to,
+
+			Condition: condition,
+		},
+	)
 
 	return nil
 }
@@ -95,7 +101,10 @@ func (g *Graph) Outgoing(
 	for _, edge := range g.Edges {
 
 		if edge.From == nodeID {
-			result = append(result, edge)
+			result = append(
+				result,
+				edge,
+			)
 		}
 	}
 
@@ -111,7 +120,10 @@ func (g *Graph) Incoming(
 	for _, edge := range g.Edges {
 
 		if edge.To == nodeID {
-			result = append(result, edge)
+			result = append(
+				result,
+				edge,
+			)
 		}
 	}
 

@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -15,24 +16,73 @@ type Run struct {
 	StartedAt   time.Time
 	CompletedAt *time.Time
 
-	// Every actual node execution.
 	Executions []*NodeExecution
 
-	// A node can be activated and then consumed
-	// by the scheduler.
+	// Nodes that have been triggered but whose
+	// activation hasn't yet been consumed.
 	ActivatedNodes map[string]bool
 
-	// An edge is activated when its condition is satisfied.
+	// Edges actually selected during this run.
 	ActivatedEdges map[string]bool
 
+	// Materialized workflow state.
 	State State
 
 	mu sync.RWMutex
 }
 
+// ------------------------------------------------------------
+// Execution context
+// ------------------------------------------------------------
+
+type executionContextKey string
+
+const executionContextKeyName executionContextKey = "graph-execution"
+
+type ExecutionContext struct {
+	RunID       string
+	ExecutionID string
+	NodeID      string
+}
+
+func WithExecutionContext(
+	ctx context.Context,
+	execution ExecutionContext,
+) context.Context {
+
+	return context.WithValue(
+		ctx,
+		executionContextKeyName,
+		execution,
+	)
+}
+
+func GetExecutionContext(
+	ctx context.Context,
+) (ExecutionContext, bool) {
+
+	value := ctx.Value(
+		executionContextKeyName,
+	)
+
+	if value == nil {
+		return ExecutionContext{}, false
+	}
+
+	execution, ok :=
+		value.(ExecutionContext)
+
+	return execution, ok
+}
+
+// ------------------------------------------------------------
+// Constructor
+// ------------------------------------------------------------
+
 func NewRun(
 	id string,
 	graph *Graph,
+	initial State,
 ) *Run {
 
 	return &Run{
@@ -57,9 +107,7 @@ func NewRun(
 			map[string]bool,
 		),
 
-		State: make(
-			map[string]any,
-		),
+		State: initial.Clone(),
 	}
 }
 
@@ -79,6 +127,7 @@ func (r *Run) ActivateNode(
 func (r *Run) IsNodeActivated(
 	nodeID string,
 ) bool {
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -88,6 +137,7 @@ func (r *Run) IsNodeActivated(
 func (r *Run) ConsumeNodeActivation(
 	nodeID string,
 ) bool {
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -119,6 +169,7 @@ func (r *Run) ActivateEdge(
 func (r *Run) IsEdgeActivated(
 	edgeID string,
 ) bool {
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -126,7 +177,7 @@ func (r *Run) IsEdgeActivated(
 }
 
 // ------------------------------------------------------------
-// Execution history
+// Executions
 // ------------------------------------------------------------
 
 func (r *Run) AddExecution(
@@ -144,6 +195,7 @@ func (r *Run) AddExecution(
 func (r *Run) NextAttempt(
 	nodeID string,
 ) int {
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -159,7 +211,13 @@ func (r *Run) NextAttempt(
 	return attempt + 1
 }
 
-func (r *Run) SetState(state State) {
+// ------------------------------------------------------------
+// State
+// ------------------------------------------------------------
+
+func (r *Run) SetState(
+	state State,
+) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -167,6 +225,7 @@ func (r *Run) SetState(state State) {
 }
 
 func (r *Run) StateSnapshot() State {
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -175,8 +234,6 @@ func (r *Run) StateSnapshot() State {
 
 // ------------------------------------------------------------
 // Snapshot
-//
-// Server/UI never accesses Run's internal mutex directly.
 // ------------------------------------------------------------
 
 type RunSnapshot struct {
@@ -218,6 +275,7 @@ func (r *Run) Snapshot() RunSnapshot {
 	)
 
 	for key, value := range r.ActivatedNodes {
+
 		activatedNodes[key] = value
 	}
 
@@ -227,6 +285,7 @@ func (r *Run) Snapshot() RunSnapshot {
 	)
 
 	for key, value := range r.ActivatedEdges {
+
 		activatedEdges[key] = value
 	}
 
@@ -244,5 +303,7 @@ func (r *Run) Snapshot() RunSnapshot {
 		ActivatedNodes: activatedNodes,
 
 		ActivatedEdges: activatedEdges,
+
+		State: r.State.Clone(),
 	}
 }
