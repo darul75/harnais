@@ -1034,14 +1034,19 @@ function App() {
                 </h2>
 
                 <span>
-                  Workflow state
+                  {selectedExecution
+                    ? `when ${selectedExecution.nodeId} started`
+                    : "Workflow state"}
                 </span>
               </summary>
 
               <div className="execution-details">
                 <pre>
                   {JSON.stringify(
-                    run.state ?? {},
+                    selectedExecution
+                      ? selectedExecution.input ??
+                          {}
+                      : run.state ?? {},
                     null,
                     2,
                   )}
