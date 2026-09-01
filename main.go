@@ -79,21 +79,12 @@ func main() {
 			},
 
 			// ------------------------------------------------
-			// Register run
+			// Run registration happens in the StartRun
+			// closure, where task + workflow metadata is
+			// known.
 			// ------------------------------------------------
 
-			func(run *graph.Run) {
-
-				runManager.Add(
-					run,
-				)
-
-				fmt.Println()
-				fmt.Println(
-					"Run registered:",
-					run.ID,
-				)
-			},
+			nil,
 		)
 
 	// ============================================================
@@ -131,13 +122,31 @@ func main() {
 				g :=
 					workflow.Build()
 
-				return executor.Start(
-					context.Background(),
-					g,
-					graph.State{
-						"task": request.Task,
+				run :=
+					executor.Start(
+						context.Background(),
+						g,
+						graph.State{
+							"task": request.Task,
+						},
+					)
+
+				runManager.Add(
+					run,
+					server.RunMeta{
+						Task: request.Task,
+
+						WorkflowID: workflow.ID,
 					},
 				)
+
+				fmt.Println()
+				fmt.Println(
+					"Run registered:",
+					run.ID,
+				)
+
+				return run
 			},
 
 			func() []server.WorkflowInfo {

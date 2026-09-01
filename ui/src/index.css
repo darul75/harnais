@@ -171,6 +171,140 @@ button {
   line-height: 1.4;
 }
 
+.run-list {
+  padding: 6px 0;
+}
+
+.run-row {
+  display: flex;
+
+  align-items: center;
+
+  gap: 10px;
+
+  width: 100%;
+
+  border: 0;
+
+  border-bottom: 1px solid #374151;
+
+  border-radius: 0;
+
+  padding: 11px 14px;
+
+  text-align: left;
+
+  color: #d1d5db;
+
+  background: transparent;
+
+  cursor: pointer;
+
+  font-size: 12px;
+
+  font-weight: 400;
+}
+
+.run-row:hover {
+  background: #273449;
+}
+
+.run-selected {
+  background: #293548;
+}
+
+.run-selected .run-task {
+  color: #60a5fa;
+}
+
+.run-task {
+  flex: 1;
+
+  min-width: 0;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+
+  color: #f9fafb;
+
+  font-size: 13px;
+
+  font-weight: 600;
+}
+
+.run-meta {
+  color: #9ca3af;
+
+  font-size: 11px;
+
+  white-space: nowrap;
+}
+
+.header-actions {
+  display: flex;
+
+  align-items: center;
+
+  gap: 10px;
+}
+
+.run-nav {
+  display: flex;
+
+  align-items: center;
+
+  gap: 6px;
+
+  padding: 4px;
+
+  border: 1px solid #374151;
+
+  border-radius: 999px;
+
+  background: #1f2937;
+}
+
+.run-nav button {
+  border: 0;
+
+  border-radius: 999px;
+
+  padding: 4px 10px;
+
+  background: transparent;
+
+  font-size: 12px;
+}
+
+.run-nav button:hover:not(:disabled) {
+  background: #374151;
+}
+
+.run-nav-count {
+  min-width: 44px;
+
+  color: #9ca3af;
+
+  text-align: center;
+
+  font-family: monospace;
+
+  font-size: 12px;
+}
+
+.new-run {
+  border-color: #3b82f6;
+
+  background: #1d4ed8;
+}
+
+.new-run:hover {
+  background: #2563eb;
+}
+
 button {
   border: 1px solid #4b5563;
 

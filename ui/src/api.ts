@@ -1,4 +1,13 @@
-import type { Workflow } from "./types";
+import type { RunSummary, Workflow } from "./types";
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
 
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
@@ -56,12 +65,27 @@ export async function getRun(
   );
 
   if (!response.ok) {
+    throw new ApiError(
+      await response.text(),
+      response.status,
+    );
+  }
+
+  return response.json();
+}
+
+export async function getRuns() {
+  const response = await fetch(
+    `${API_BASE}/api/runs`,
+  );
+
+  if (!response.ok) {
     throw new Error(
       await response.text(),
     );
   }
 
-  return response.json();
+  return (await response.json()) as RunSummary[];
 }
 
 export async function getRunTree(

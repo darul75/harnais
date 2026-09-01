@@ -1,14 +1,17 @@
 import {
   FormEvent,
+  useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
 
 import {
+  ApiError,
   createEventSource,
   createRun,
   getRun,
+  getRuns,
   getRunTree,
   getWorkflows,
 } from "./api";
@@ -20,6 +23,7 @@ import type {
   ExecutionNode,
   LLMCall,
   Run,
+  RunSummary,
   RunTree,
   RuntimeEvent,
   ToolCall,
@@ -58,11 +62,14 @@ function App() {
   const [task, setTask] = useState("");
   const [starting, setStarting] = useState(false);
 
-  const [runId, setRunId] =
-    useState<string | null>(null);
+  const { runId, selectRun, clearRun } =
+    useRunRoute();
 
   const [run, setRun] =
     useState<Run | null>(null);
+
+  const [runs, setRuns] =
+    useState<RunSummary[]>([]);
 
   const [tree, setTree] =
     useState<RunTree | null>(null);
@@ -113,6 +120,28 @@ function App() {
     return () => {
       disposed = true;
     };
+  }, []);
+
+  // ------------------------------------------------------------
+  // Load runs
+  // ------------------------------------------------------------
+
+  async function refreshRuns() {
+    try {
+      const list =
+        await getRuns();
+
+      setRuns(list);
+    } catch (err) {
+      console.error(
+        "Failed to load runs",
+        err,
+      );
+    }
+  }
+
+  useEffect(() => {
+    void refreshRuns();
   }, []);
 
   // ------------------------------------------------------------
@@ -168,6 +197,17 @@ function App() {
         "Failed to refresh run",
         err,
       );
+
+      if (
+        err instanceof ApiError &&
+        err.status === 404
+      ) {
+        clearRun();
+
+        setError(
+          `Run not found: ${id}`,
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -199,19 +239,15 @@ function App() {
           selectedWorkflowId ?? undefined,
         );
 
-      setRunId(
+      switchRun(
         result.runId,
       );
-
-      setRun(null);
-      setTree(null);
-      setEvents([]);
-      setSelectedExecutionId(null);
-      setSelectedEventId(null);
 
       await refreshRun(
         result.runId,
       );
+
+      await refreshRuns();
     } catch (err) {
       setError(
         err instanceof Error
@@ -221,6 +257,30 @@ function App() {
     } finally {
       setStarting(false);
     }
+  }
+
+  // ------------------------------------------------------------
+  // Run switching
+  // ------------------------------------------------------------
+
+  function switchRun(id: string) {
+    setRun(null);
+    setTree(null);
+    setEvents([]);
+    setSelectedExecutionId(null);
+    setSelectedEventId(null);
+    setError(null);
+    selectRun(id);
+  }
+
+  function newRun() {
+    setRun(null);
+    setTree(null);
+    setEvents([]);
+    setSelectedExecutionId(null);
+    setSelectedEventId(null);
+    setError(null);
+    clearRun();
   }
 
   // ------------------------------------------------------------
@@ -286,6 +346,14 @@ function App() {
         }
 
         void refreshRun(runId);
+
+        if (
+          runtimeEvent.type.startsWith(
+            "run.",
+          )
+        ) {
+          void refreshRuns();
+        }
       } catch (err) {
         console.error(
           "Failed to parse SSE event",
@@ -368,6 +436,24 @@ function App() {
       [executions, tree?.edges],
     );
 
+  const selectedIndex =
+    runs.findIndex(
+      (summary) =>
+        summary.id === runId,
+    );
+
+  const prevId =
+    selectedIndex > 0
+      ? runs[selectedIndex - 1].id
+      : null;
+
+  const nextId =
+    selectedIndex >= 0 &&
+    selectedIndex <
+      runs.length - 1
+      ? runs[selectedIndex + 1].id
+      : null;
+
   return (
     <div className="app">
       {/* ======================================================= */}
@@ -387,11 +473,56 @@ function App() {
           )}
         </div>
 
-        {run && (
-          <RunStatus
-            status={run.status}
-          />
-        )}
+        <div className="header-actions">
+          {runId && (
+            <>
+              <div className="run-nav">
+                <button
+                  type="button"
+                  onClick={() =>
+                    prevId &&
+                    switchRun(prevId)
+                  }
+                  disabled={!prevId}
+                  aria-label="Previous run"
+                >
+                  {"\u25C0"}
+                </button>
+
+                <span className="run-nav-count">
+                  {selectedIndex + 1}{" "}
+                  / {runs.length}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    nextId &&
+                    switchRun(nextId)
+                  }
+                  disabled={!nextId}
+                  aria-label="Next run"
+                >
+                  {"\u25B6"}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                className="new-run"
+                onClick={newRun}
+              >
+                New Run
+              </button>
+            </>
+          )}
+
+          {run && (
+            <RunStatus
+              status={run.status}
+            />
+          )}
+        </div>
       </header>
 
       {error && (
@@ -402,10 +533,60 @@ function App() {
 
       <div className="flex gap-5 items-start">
         {/* =================================================== */}
-        {/* Sidebar: workflow selection */}
+        {/* Sidebar: runs + workflow selection */}
         {/* =================================================== */}
 
-        <aside className="w-64 shrink-0">
+        <aside className="w-64 shrink-0 flex flex-col gap-5">
+          <div className="panel">
+            <div className="panel-header">
+              <h2>
+                Runs
+              </h2>
+
+              <span>
+                {runs.length}
+              </span>
+            </div>
+
+            <div className="run-list">
+              {runs.map((summary) => (
+                <button
+                  key={summary.id}
+                  type="button"
+                  className={`run-row ${
+                    summary.id === runId
+                      ? "run-selected"
+                      : ""
+                  }`}
+                  onClick={() =>
+                    switchRun(summary.id)
+                  }
+                >
+                  <span
+                    className={`status-dot status-${summary.status}`}
+                  />
+
+                  <span className="run-task">
+                    {summary.task ||
+                      summary.id}
+                  </span>
+
+                  <span className="run-meta">
+                    {formatTime(
+                      summary.startedAt,
+                    )}
+                  </span>
+                </button>
+              ))}
+
+              {!runs.length && (
+                <div className="empty">
+                  No runs yet
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="panel">
             <div className="panel-header">
               <h2>
@@ -953,6 +1134,118 @@ function App() {
       </div>
     </div>
   );
+}
+
+// ============================================================
+// Run route (hash-based URL navigation)
+// ============================================================
+
+function parseRunId(hash: string): string | null {
+  const match =
+    hash.match(/^#\/runs\/([^/]+)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(
+      match[1],
+    );
+  } catch {
+    return null;
+  }
+}
+
+function runHash(id: string): string {
+  return `#/runs/${encodeURIComponent(id)}`;
+}
+
+function useRunRoute() {
+  const [runId, setRunId] =
+    useState<string | null>(
+      () =>
+        parseRunId(
+          window.location.hash,
+        ),
+    );
+
+  useEffect(() => {
+    function syncFromURL() {
+      setRunId(
+        parseRunId(
+          window.location.hash,
+        ),
+      );
+    }
+
+    window.addEventListener(
+      "popstate",
+      syncFromURL,
+    );
+
+    window.addEventListener(
+      "hashchange",
+      syncFromURL,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "popstate",
+        syncFromURL,
+      );
+
+      window.removeEventListener(
+        "hashchange",
+        syncFromURL,
+      );
+    };
+  }, []);
+
+  const selectRun =
+    useCallback((id: string) => {
+      const url =
+        runHash(id);
+
+      if (
+        window.location.hash !==
+        url
+      ) {
+        window.history.pushState(
+          null,
+          "",
+          url,
+        );
+      }
+
+      setRunId(id);
+    }, []);
+
+  const clearRun =
+    useCallback(() => {
+      const url =
+        window.location.pathname +
+        window.location.search;
+
+      if (
+        window.location.hash !==
+        ""
+      ) {
+        window.history.pushState(
+          null,
+          "",
+          url,
+        );
+      }
+
+      setRunId(null);
+    }, []);
+
+  return {
+    runId,
+    selectRun,
+    clearRun,
+  };
 }
 
 // ============================================================

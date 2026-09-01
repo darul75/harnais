@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"harnais/graph"
 )
@@ -61,6 +62,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(
 		"POST /api/runs",
 		s.createRun,
+	)
+
+	mux.HandleFunc(
+		"GET /api/runs",
+		s.getRuns,
 	)
 
 	mux.HandleFunc(
@@ -205,6 +211,62 @@ func (s *Server) getWorkflows(
 // Run
 // ------------------------------------------------------------
 
+type runSummary struct {
+	ID string `json:"id"`
+
+	Task string `json:"task"`
+
+	WorkflowID string `json:"workflowId"`
+
+	Status graph.Status `json:"status"`
+
+	StartedAt time.Time `json:"startedAt"`
+
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
+}
+
+func (s *Server) getRuns(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	records :=
+		s.Runs.List()
+
+	summaries :=
+		make(
+			[]runSummary,
+			0,
+			len(records),
+		)
+
+	for _, record := range records {
+
+		summaries =
+			append(
+				summaries,
+				runSummary{
+					ID: record.Run.ID,
+
+					Task: record.Meta.Task,
+
+					WorkflowID: record.Meta.WorkflowID,
+
+					Status: record.Run.Status,
+
+					StartedAt: record.Run.StartedAt,
+
+					CompletedAt: record.Run.CompletedAt,
+				},
+			)
+	}
+
+	writeJSON(
+		w,
+		summaries,
+	)
+}
+
 func (s *Server) getRun(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -229,10 +291,17 @@ func (s *Server) getRun(
 	snapshot :=
 		run.Snapshot()
 
+	meta, _ :=
+		s.Runs.Meta(runID)
+
 	writeJSON(
 		w,
 		map[string]any{
 			"id": snapshot.ID,
+
+			"task": meta.Task,
+
+			"workflowId": meta.WorkflowID,
 
 			"status": snapshot.Status,
 

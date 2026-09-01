@@ -17,10 +17,20 @@ export type AgentActivityKind =
 export type Run = {
   id: string;
   task?: string;
+  workflowId?: string;
   status: RunStatus;
   startedAt: string;
   completedAt?: string;
   state?: Record<string, unknown>;
+};
+
+export type RunSummary = {
+  id: string;
+  task?: string;
+  workflowId?: string;
+  status: RunStatus;
+  startedAt: string;
+  completedAt?: string;
 };
 
 export type Workflow = {
