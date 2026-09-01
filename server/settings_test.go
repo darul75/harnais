@@ -10,6 +10,7 @@ import (
 
 	"harnais/config"
 	"harnais/graph"
+	"harnais/tools"
 )
 
 func testSettingsServer(t *testing.T) *httptest.Server {
@@ -23,6 +24,9 @@ func testSettingsServer(t *testing.T) *httptest.Server {
 		NewEventBus(),
 		NewRunManager(),
 		store,
+		tools.NewWorkspace(
+			filepath.Join(t.TempDir(), "ws"),
+		),
 		func(request StartRunRequest) *graph.Run {
 			return nil
 		},
@@ -77,9 +81,9 @@ func TestGetSettings(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	if len(view.Providers) != 1 {
+	if len(view.Providers) != 2 {
 		t.Fatalf(
-			"expected 1 provider, got %d",
+			"expected 2 providers, got %d",
 			len(view.Providers),
 		)
 	}
