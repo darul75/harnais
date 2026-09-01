@@ -31,6 +31,10 @@ type executionTreeNode struct {
 
 	Status graph.Status `json:"status"`
 
+	Input graph.State `json:"input"`
+
+	Output graph.State `json:"output"`
+
 	TriggeredBy []string `json:"triggeredBy"`
 
 	Agent *agentTree `json:"agent,omitempty"`
@@ -163,6 +167,10 @@ func (s *Server) getExecutionTree(
 				Attempt: execution.Attempt,
 
 				Status: execution.Status,
+
+				Input: execution.Input,
+
+				Output: execution.Output,
 
 				TriggeredBy: append(
 					[]string(nil),

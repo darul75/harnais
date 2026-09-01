@@ -643,6 +643,22 @@ button:disabled {
   font-size: 13px;
 }
 
+.details-grid details {
+  margin-top: 6px;
+}
+
+.details-grid summary {
+  color: #9ca3af;
+
+  cursor: pointer;
+
+  font-size: 11px;
+}
+
+.details-grid pre {
+  margin-top: 8px;
+}
+
 pre {
   margin: 0;
 

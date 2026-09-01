@@ -308,6 +308,8 @@ func (s *Server) getRun(
 			"startedAt": snapshot.StartedAt,
 
 			"completedAt": snapshot.CompletedAt,
+
+			"state": snapshot.State,
 		},
 	)
 }

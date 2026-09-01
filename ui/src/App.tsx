@@ -1389,6 +1389,53 @@ function ExecutionDetails({
           </div>
         )}
 
+      {(execution.input ||
+        execution.output) && (
+        <div className="details-grid">
+          <div>
+            <h3>
+              Input
+            </h3>
+
+            <details>
+              <summary>
+                Show input
+              </summary>
+
+              <pre>
+                {JSON.stringify(
+                  execution.input ??
+                    {},
+                  null,
+                  2,
+                )}
+              </pre>
+            </details>
+          </div>
+
+          <div>
+            <h3>
+              Output
+            </h3>
+
+            <details>
+              <summary>
+                Show output
+              </summary>
+
+              <pre>
+                {JSON.stringify(
+                  execution.output ??
+                    {},
+                  null,
+                  2,
+                )}
+              </pre>
+            </details>
+          </div>
+        </div>
+      )}
+
       {agent && (
         <AgentExecutionDetails
           agent={agent}

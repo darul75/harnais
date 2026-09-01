@@ -45,6 +45,8 @@ export type ExecutionNode = {
   workerId: string;
   attempt: number;
   status: NodeStatus;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
   triggeredBy?: string[];
   agent?: AgentExecution;
 };
