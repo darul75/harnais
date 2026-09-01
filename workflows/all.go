@@ -12,7 +12,9 @@ func Register(
 		NewShared(workspace)
 
 	return NewRegistry(
-		CodingWorkflowID,
+		BasicWorkflowID,
+
+		BasicWorkflow(s),
 
 		CodingWorkflow(s),
 

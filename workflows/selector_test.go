@@ -92,7 +92,26 @@ func TestSelectFallbackDefault(t *testing.T) {
 		t.Fatalf("Select: %v", err)
 	}
 
-	if workflow.ID != CodingWorkflowID {
-		t.Errorf("expected default %s, got %s", CodingWorkflowID, workflow.ID)
+	if workflow.ID != BasicWorkflowID {
+		t.Errorf("expected default %s, got %s", BasicWorkflowID, workflow.ID)
+	}
+}
+
+func TestSelectWeather(t *testing.T) {
+	registry := testRegistry(t)
+	selector := NewSelector(registry, nil)
+
+	workflow, err := selector.Select(
+		context.Background(),
+		"What is the weather in Paris",
+		"",
+	)
+
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+
+	if workflow.ID != BasicWorkflowID {
+		t.Errorf("expected %s, got %s", BasicWorkflowID, workflow.ID)
 	}
 }

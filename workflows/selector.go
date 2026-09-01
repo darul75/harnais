@@ -91,6 +91,15 @@ func (s *Selector) keywordMatch(
 
 	for _, workflow := range s.registry.All() {
 
+		// The default workflow is the fallback. It only wins
+		// via explicit selection or the final fallback step,
+		// never by competing on keywords.
+
+		if workflow.ID ==
+			s.registry.Default().ID {
+			continue
+		}
+
 		score :=
 			s.scoreWorkflow(
 				workflow,
