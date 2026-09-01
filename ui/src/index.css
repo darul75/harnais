@@ -637,58 +637,126 @@ button:disabled {
   overflow: auto;
 }
 
-.two-column {
-  display: grid;
-
-  grid-template-columns:
-    minmax(0, 1fr)
-    minmax(0, 1fr);
-
-  gap: 18px;
-}
-
-.execution-list {
-  padding: 6px 0;
-}
-
-.execution-row {
+.run-bar {
   display: grid;
 
   grid-template-columns:
     1fr
-    60px
-    100px
-    90px;
+    auto
+    auto
+    auto;
 
-  width: 100%;
+  gap: 22px;
 
-  border: 0;
+  align-items: center;
 
-  border-bottom: 1px solid #374151;
+  padding: 12px 17px;
+}
 
-  border-radius: 0;
+.run-bar-main {
+  display: flex;
 
-  padding: 10px 17px;
+  gap: 10px;
 
-  text-align: left;
+  align-items: center;
+
+  min-width: 0;
+}
+
+.run-bar-task {
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+
+  color: #f9fafb;
+
+  font-family: monospace;
+
+  font-size: 13px;
+}
+
+.run-bar-times {
+  color: #6b7280;
+
+  font-size: 11px;
+
+  white-space: nowrap;
+}
+
+.run-bar-counts {
+  display: flex;
+
+  gap: 14px;
+}
+
+.run-bar-counts span {
+  color: #9ca3af;
+
+  font-family: monospace;
+
+  font-size: 12px;
+
+  white-space: nowrap;
+}
+
+.run-bar-id {
+  color: #6b7280;
+
+  font-family: monospace;
+
+  font-size: 11px;
+
+  white-space: nowrap;
+}
+
+.execution-chips {
+  display: flex;
+
+  flex-wrap: wrap;
+
+  gap: 8px;
+
+  padding: 12px 17px;
+}
+
+.execution-chip {
+  display: inline-flex;
+
+  gap: 7px;
+
+  align-items: center;
+
+  padding: 6px 12px;
+
+  border: 1px solid #374151;
+
+  border-radius: 999px;
+
+  background: #111827;
 
   color: #d1d5db;
 
-  background: transparent;
+  font-family: monospace;
+
+  font-size: 12px;
 
   cursor: pointer;
-
-  font-size: 13px;
-
-  font-weight: 400;
 }
 
-.execution-row:hover {
+.execution-chip:hover {
+  border-color: #6b7280;
+
   background: #273449;
 }
 
-.execution-selected {
-  background: #293548;
+.execution-chip-selected {
+  border-color: #60a5fa;
+
+  background: #172554;
+
+  color: #f9fafb;
 }
 
 .execution-node {
@@ -884,6 +952,7 @@ pre {
   display: grid;
 
   grid-template-columns:
+    20px
     90px
     160px
     130px
@@ -901,9 +970,11 @@ pre {
   font-family: monospace;
 
   font-size: 11px;
+
+  cursor: pointer;
 }
 
-.activity-row:last-child {
+.activity-details:last-child .activity-row {
   border-bottom: 0;
 }
 
@@ -1126,4 +1197,166 @@ pre {
 
 .tool-call {
   border-left: 3px solid #fbbf24;
+}
+
+/* --------------------------------------------------------- */
+/* Caret (accordion indicators) */
+/* --------------------------------------------------------- */
+
+.caret {
+  display: inline-block;
+
+  width: 16px;
+
+  flex-shrink: 0;
+
+  color: #6b7280;
+
+  font-size: 11px;
+
+  transition: transform 0.15s ease;
+}
+
+details[open] > summary .caret {
+  transform: rotate(90deg);
+}
+
+/* --------------------------------------------------------- */
+/* Collapsible execution sections (Input / Output / Agent) */
+/* --------------------------------------------------------- */
+
+.collapsible-section {
+  margin-bottom: 14px;
+
+  border: 1px solid #374151;
+
+  border-radius: 7px;
+
+  background: #1a2332;
+}
+
+.collapsible-section > summary {
+  display: flex;
+
+  gap: 8px;
+
+  align-items: center;
+
+  padding: 10px 12px;
+
+  color: #d1d5db;
+
+  font-family: monospace;
+
+  font-size: 12px;
+
+  cursor: pointer;
+
+  list-style: none;
+}
+
+.collapsible-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-section > summary:hover {
+  background: #273449;
+}
+
+.collapsible-title {
+  font-weight: 600;
+
+  white-space: nowrap;
+}
+
+.collapsible-preview {
+  flex: 1;
+
+  min-width: 0;
+
+  overflow: hidden;
+
+  text-align: right;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+
+  color: #6b7280;
+
+  font-size: 11px;
+}
+
+.collapsible-body {
+  padding: 12px;
+
+  border-top: 1px solid #374151;
+}
+
+.collapsible-body pre {
+  max-height: 360px;
+
+  margin: 0;
+
+  overflow: auto;
+}
+
+.collapsible-body .agent-execution {
+  margin-top: 0;
+
+  padding-top: 0;
+
+  border-top: 0;
+}
+
+/* --------------------------------------------------------- */
+/* Panel collapsibles (State / Events) */
+/* --------------------------------------------------------- */
+
+.panel-collapsible > summary {
+  gap: 8px;
+
+  border-bottom: 0;
+
+  cursor: pointer;
+
+  list-style: none;
+}
+
+.panel-collapsible > summary h2 {
+  margin-right: auto;
+}
+
+.panel-collapsible > summary::-webkit-details-marker {
+  display: none;
+}
+
+.panel-collapsible > summary:hover {
+  background: #273449;
+}
+
+.panel-collapsible[open] > summary {
+  border-bottom: 1px solid #374151;
+}
+
+/* --------------------------------------------------------- */
+/* Accordion activity rows (LLM / Tool) */
+/* --------------------------------------------------------- */
+
+.activity-details > summary {
+  list-style: none;
+}
+
+.activity-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.activity-details .nested-calls {
+  margin-top: 0;
+
+  padding: 12px;
+
+  border-top: 1px solid #374151;
+
+  background: #111827;
 }

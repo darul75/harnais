@@ -411,6 +411,32 @@ func (r *Run) attachActivityLocked(
 	}
 }
 
+func (r *Run) linkActivityCallLocked(
+	agentExecutionID string,
+	activityID string,
+	link func(*AgentActivity),
+) {
+
+	for _, execution := range r.AgentExecutions {
+
+		if execution.ID !=
+			agentExecutionID {
+			continue
+		}
+
+		for _, activity := range execution.Activities {
+
+			if activity.ID ==
+				activityID {
+
+				link(activity)
+
+				return
+			}
+		}
+	}
+}
+
 func (r *Run) CompleteAgentActivity(
 	activityID string,
 	err error,
@@ -483,6 +509,14 @@ func (r *Run) StartLLMCall(
 			r.LLMCalls,
 			call,
 		)
+
+	r.linkActivityCallLocked(
+		agentExecutionID,
+		activityID,
+		func(activity *AgentActivity) {
+			activity.LLMCallID = &call.ID
+		},
+	)
 
 	r.mu.Unlock()
 
@@ -567,6 +601,14 @@ func (r *Run) StartToolCall(
 			r.ToolCalls,
 			call,
 		)
+
+	r.linkActivityCallLocked(
+		agentExecutionID,
+		activityID,
+		func(activity *AgentActivity) {
+			activity.ToolCallID = &call.ID
+		},
+	)
 
 	r.mu.Unlock()
 

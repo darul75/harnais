@@ -1,5 +1,6 @@
 import {
-  FormEvent,
+  type FormEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -731,114 +732,63 @@ function App() {
           {/* Run + Workflow side-by-side */}
           {/* --------------------------------------------------- */}
 
-          <div className="grid grid-cols-2 gap-5 items-start">
-          {/* --------------------------------------------------- */}
-          {/* Run summary */}
-          {/* --------------------------------------------------- */}
+          <section className="panel run-bar">
+            <div className="run-bar-main">
+              <span className="run-bar-task">
+                {run.task ??
+                  task}
+              </span>
 
-          <section className="panel">
-            <div className="panel-header">
-              <h2>
-                Run
-              </h2>
+              <RunStatus
+                status={run.status}
+              />
+            </div>
+
+            <span className="run-bar-times">
+              Started{" "}
+              {formatDate(
+                run.startedAt,
+              )}
+
+              {run.completedAt
+                ? ` · completed ${formatDate(
+                    run.completedAt,
+                  )}`
+                : ""}
+            </span>
+
+            <div className="run-bar-counts">
+              <span>
+                Executions{" "}
+                {executions.length}
+              </span>
 
               <span>
-                {loading
-                  ? "Refreshing..."
-                  : "Live"}
+                Completed{" "}
+                {completedCount}
+              </span>
+
+              <span>
+                Running{" "}
+                {runningCount}
+              </span>
+
+              <span>
+                Failed{" "}
+                {failedCount}
+              </span>
+
+              <span>
+                Events{" "}
+                {events.length}
               </span>
             </div>
 
-            <div className="execution-details">
-              <div className="details-header">
-                <div>
-                  <h2>
-                    {run.task ??
-                      task}
-                  </h2>
-
-                  <div className="details-subtitle">
-                    Started{" "}
-                    {formatDate(
-                      run.startedAt,
-                    )}
-
-                    {run.completedAt
-                      ? ` · completed ${formatDate(
-                          run.completedAt,
-                        )}`
-                      : ""}
-                  </div>
-                </div>
-
-                <RunStatus
-                  status={run.status}
-                />
-              </div>
-
-              <div className="details-meta">
-                <div>
-                  <span>
-                    Executions
-                  </span>
-
-                  <strong>
-                    {executions.length}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>
-                    Completed
-                  </span>
-
-                  <strong>
-                    {completedCount}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>
-                    Running
-                  </span>
-
-                  <strong>
-                    {runningCount}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>
-                    Failed
-                  </span>
-
-                  <strong>
-                    {failedCount}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>
-                    Events
-                  </span>
-
-                  <strong>
-                    {events.length}
-                  </strong>
-                </div>
-
-                <div>
-                  <span>
-                    Run ID
-                  </span>
-
-                  <strong>
-                    {run.id}
-                  </strong>
-                </div>
-              </div>
-            </div>
+            <span className="run-bar-id">
+              {run.id}
+            </span>
           </section>
+
 
           {/* --------------------------------------------------- */}
           {/* Workflow graph */}
@@ -1003,95 +953,101 @@ function App() {
               )}
             </div>
           </section>
-          </div>
 
           {/* --------------------------------------------------- */}
-          {/* Executions + details */}
+          {/* Executions (chip strip) + selected details */}
           {/* --------------------------------------------------- */}
 
-          <div className="two-column">
-            <section className="panel">
-              <div className="panel-header">
-                <h2>
-                  Executions
-                </h2>
+          <section className="panel">
+            <div className="panel-header">
+              <h2>
+                Executions
+              </h2>
 
-                <span>
-                  {executions.length}
-                </span>
-              </div>
+              <span>
+                {executions.length}
+              </span>
+            </div>
 
-              <div className="execution-list">
-                {executions.map(
-                  (execution) => (
-                    <ExecutionRow
-                      key={
-                        execution.id
-                      }
-                      execution={
-                        execution
-                      }
-                      selected={
-                        execution.id ===
-                        selectedExecutionId
-                      }
-                      onClick={() =>
-                        setSelectedExecutionId(
-                          execution.id,
-                        )
-                      }
-                    />
-                  ),
-                )}
+            <div className="execution-chips">
+              {executions.map(
+                (execution) => (
+                  <ExecutionChip
+                    key={
+                      execution.id
+                    }
+                    execution={
+                      execution
+                    }
+                    selected={
+                      execution.id ===
+                      selectedExecutionId
+                    }
+                    onClick={() =>
+                      setSelectedExecutionId(
+                        execution.id,
+                      )
+                    }
+                  />
+                ),
+              )}
 
-                {!executions.length && (
-                  <div className="empty">
-                    No executions yet.
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section className="panel">
-              {selectedExecution ? (
-                <ExecutionDetails
-                  execution={
-                    selectedExecution
-                  }
-                />
-              ) : (
+              {!executions.length && (
                 <div className="empty">
-                  Select an execution
-                  to inspect it.
+                  No executions yet.
                 </div>
               )}
-            </section>
-          </div>
+            </div>
+          </section>
+
+          <section className="panel">
+            {selectedExecution ? (
+              <ExecutionDetails
+                execution={
+                  selectedExecution
+                }
+              />
+            ) : (
+              <div className="empty">
+                Select an execution
+                to inspect it.
+              </div>
+            )}
+          </section>
 
           {/* --------------------------------------------------- */}
           {/* State */}
           {/* --------------------------------------------------- */}
 
           <section className="panel">
-            <div className="panel-header">
-              <h2>
-                State
-              </h2>
+            <details
+              className="panel-collapsible"
+              open
+            >
+              <summary className="panel-header">
+                <span className="caret">
+                  {"\u25B8"}
+                </span>
 
-              <span>
-                Workflow state
-              </span>
-            </div>
+                <h2>
+                  State
+                </h2>
 
-            <div className="execution-details">
-              <pre>
-                {JSON.stringify(
-                  run.state ?? {},
-                  null,
-                  2,
-                )}
-              </pre>
-            </div>
+                <span>
+                  Workflow state
+                </span>
+              </summary>
+
+              <div className="execution-details">
+                <pre>
+                  {JSON.stringify(
+                    run.state ?? {},
+                    null,
+                    2,
+                  )}
+                </pre>
+              </div>
+            </details>
           </section>
 
           {/* --------------------------------------------------- */}
@@ -1099,42 +1055,48 @@ function App() {
           {/* --------------------------------------------------- */}
 
           <section className="panel">
-            <div className="panel-header">
-              <h2>
-                Events
-              </h2>
+            <details className="panel-collapsible">
+              <summary className="panel-header">
+                <span className="caret">
+                  {"\u25B8"}
+                </span>
 
-              <span>
-                {events.length}
-              </span>
-            </div>
+                <h2>
+                  Events
+                </h2>
 
-            <div className="events">
-              {events.map(
-                (event, index) => (
-                  <EventRow
-                    key={`${event.id ?? "event"}-${index}`}
-                    event={event}
-                    selected={
-                      event.id ===
-                      selectedEventId
-                    }
-                    onClick={() =>
-                      setSelectedEventId(
-                        event.id ??
-                          null,
-                      )
-                    }
-                  />
-                ),
-              )}
+                <span>
+                  {events.length}
+                </span>
+              </summary>
 
-              {!events.length && (
-                <div className="empty">
-                  Waiting for events...
-                </div>
-              )}
-            </div>
+              <div className="events">
+                {events.map(
+                  (event, index) => (
+                    <EventRow
+                      key={`${event.id ?? "event"}-${index}`}
+                      event={event}
+                      selected={
+                        event.id ===
+                        selectedEventId
+                      }
+                      onClick={() =>
+                        setSelectedEventId(
+                          event.id ??
+                            null,
+                        )
+                      }
+                    />
+                  ),
+                )}
+
+                {!events.length && (
+                  <div className="empty">
+                    Waiting for events...
+                  </div>
+                )}
+              </div>
+            </details>
           </section>
         </>
       )}
@@ -1337,7 +1299,7 @@ function useRoute() {
 // Execution row
 // ============================================================
 
-function ExecutionRow({
+function ExecutionChip({
   execution,
   selected,
   onClick,
@@ -1346,44 +1308,26 @@ function ExecutionRow({
   selected: boolean;
   onClick: () => void;
 }) {
-  const duration =
-    execution.startedAt &&
-    execution.completedAt
-      ? formatDuration(
-          execution.startedAt,
-          execution.completedAt,
-        )
-      : execution.status ===
-          "running"
-        ? "running"
-        : "-";
-
   return (
     <button
       type="button"
-      className={`execution-row ${
+      className={`execution-chip ${
         selected
-          ? "execution-selected"
+          ? "execution-chip-selected"
           : ""
       }`}
       onClick={onClick}
     >
+      <span
+        className={`status-dot status-${execution.status}`}
+      />
+
       <span className="execution-node">
         {execution.nodeId}
       </span>
 
       <span className="execution-attempt">
         #{execution.attempt}
-      </span>
-
-      <span>
-        <RunStatus
-          status={execution.status}
-        />
-      </span>
-
-      <span className="execution-duration">
-        {duration}
       </span>
     </button>
   );
@@ -1457,77 +1401,143 @@ function ExecutionDetails({
       {execution.triggeredBy &&
         execution.triggeredBy.length >
           0 && (
-          <div className="details-grid">
-            <div>
-              <h3>
-                Triggered by
-              </h3>
-
-              <pre>
-                {JSON.stringify(
-                  execution.triggeredBy,
-                  null,
-                  2,
-                )}
-              </pre>
-            </div>
-          </div>
+          <CollapsibleSection
+            title={`Triggered by (${execution.triggeredBy.length})`}
+            preview={previewText(
+              execution.triggeredBy,
+            )}
+          >
+            <pre>
+              {JSON.stringify(
+                execution.triggeredBy,
+                null,
+                2,
+              )}
+            </pre>
+          </CollapsibleSection>
         )}
 
-      {(execution.input ||
-        execution.output) && (
-        <div className="details-grid">
-          <div>
-            <h3>
-              Input
-            </h3>
+      {execution.input !==
+        undefined && (
+        <CollapsibleSection
+          title="Input"
+          preview={previewText(
+            execution.input,
+          )}
+        >
+          <pre>
+            {JSON.stringify(
+              execution.input ??
+                {},
+              null,
+              2,
+            )}
+          </pre>
+        </CollapsibleSection>
+      )}
 
-            <details>
-              <summary>
-                Show input
-              </summary>
-
-              <pre>
-                {JSON.stringify(
-                  execution.input ??
-                    {},
-                  null,
-                  2,
-                )}
-              </pre>
-            </details>
-          </div>
-
-          <div>
-            <h3>
-              Output
-            </h3>
-
-            <details>
-              <summary>
-                Show output
-              </summary>
-
-              <pre>
-                {JSON.stringify(
-                  execution.output ??
-                    {},
-                  null,
-                  2,
-                )}
-              </pre>
-            </details>
-          </div>
-        </div>
+      {execution.output !==
+        undefined && (
+        <CollapsibleSection
+          title="Output"
+          preview={previewText(
+            execution.output,
+          )}
+        >
+          <pre>
+            {JSON.stringify(
+              execution.output ??
+                {},
+              null,
+              2,
+            )}
+          </pre>
+        </CollapsibleSection>
       )}
 
       {agent && (
-        <AgentExecutionDetails
-          agent={agent}
-        />
+        <CollapsibleSection
+          title={`Agent · ${agent.agentId}`}
+        >
+          <AgentExecutionDetails
+            agent={agent}
+          />
+        </CollapsibleSection>
       )}
     </div>
   );
+}
+
+// ============================================================
+// Collapsible section
+// ============================================================
+
+function CollapsibleSection({
+  title,
+  preview,
+  open,
+  children,
+}: {
+  title: string;
+  preview?: string;
+  open?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details
+      className="collapsible-section"
+      open={open}
+    >
+      <summary>
+        <span className="caret">
+          {"\u25B8"}
+        </span>
+
+        <span className="collapsible-title">
+          {title}
+        </span>
+
+        {preview && (
+          <span className="collapsible-preview">
+            {preview}
+          </span>
+        )}
+      </summary>
+
+      <div className="collapsible-body">
+        {children}
+      </div>
+    </details>
+  );
+}
+
+function previewText(
+  value: unknown,
+  max = 90,
+): string {
+  let text = "";
+
+  try {
+    text =
+      JSON.stringify(
+        value ?? {},
+      ) ?? "";
+  } catch {
+    text =
+      String(value);
+  }
+
+  if (
+    text.length >
+    max
+  ) {
+    return `${text.slice(
+      0,
+      max,
+    )}\u2026`;
+  }
+
+  return text;
 }
 
 // ============================================================
@@ -1627,11 +1637,31 @@ function AgentActivityList({
       ),
     );
 
+  const llmByActivityId =
+    new Map(
+      llmCalls.map(
+        (call) => [
+          call.activityId,
+          call,
+        ],
+      ),
+    );
+
   const toolById =
     new Map(
       toolCalls.map(
         (call) => [
           call.id,
+          call,
+        ],
+      ),
+    );
+
+  const toolByActivityId =
+    new Map(
+      toolCalls.map(
+        (call) => [
+          call.activityId,
           call,
         ],
       ),
@@ -1666,11 +1696,14 @@ function AgentActivityList({
               "llm"
             ) {
               const call =
-                activity.llmCallId
+                (activity.llmCallId
                   ? llmById.get(
                       activity.llmCallId,
                     )
-                  : undefined;
+                  : undefined) ??
+                llmByActivityId.get(
+                  activity.id,
+                );
 
               return (
                 <LLMActivityRow
@@ -1688,11 +1721,14 @@ function AgentActivityList({
             }
 
             const call =
-              activity.toolCallId
+              (activity.toolCallId
                 ? toolById.get(
                     activity.toolCallId,
                   )
-                : undefined;
+                : undefined) ??
+              toolByActivityId.get(
+                activity.id,
+              );
 
             return (
               <ToolActivityRow
@@ -1732,8 +1768,12 @@ function LLMActivityRow({
   call?: LLMCall;
 }) {
   return (
-    <div className="activity">
-      <div className="activity-row llm-call">
+    <details className="activity-details llm-call">
+      <summary className="activity-row">
+        <span className="caret">
+          {"\u25B8"}
+        </span>
+
         <span className="activity-time">
           {formatTime(
             activity.startedAt,
@@ -1764,7 +1804,7 @@ function LLMActivityRow({
             : call?.response ??
               "LLM call"}
         </span>
-      </div>
+      </summary>
 
       {call && (
         <div className="nested-calls">
@@ -1837,7 +1877,7 @@ function LLMActivityRow({
           </div>
         </div>
       )}
-    </div>
+    </details>
   );
 }
 
@@ -1853,8 +1893,12 @@ function ToolActivityRow({
   call?: ToolCall;
 }) {
   return (
-    <div className="activity">
-      <div className="activity-row tool-call">
+    <details className="activity-details tool-call">
+      <summary className="activity-row">
+        <span className="caret">
+          {"\u25B8"}
+        </span>
+
         <span className="activity-time">
           {formatTime(
             activity.startedAt,
@@ -1885,7 +1929,7 @@ function ToolActivityRow({
               )
             : "Tool call"}
         </span>
-      </div>
+      </summary>
 
       {call && (
         <div className="nested-calls">
@@ -1949,7 +1993,7 @@ function ToolActivityRow({
           </div>
         </div>
       )}
-    </div>
+    </details>
   );
 }
 
