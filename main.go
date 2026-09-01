@@ -29,7 +29,7 @@ func main() {
 	// ============================================================
 
 	g :=
-		buildGraph(eventBus)
+		buildGraph()
 
 	// ============================================================
 	// Executor
@@ -37,6 +37,10 @@ func main() {
 
 	executor :=
 		graph.NewExecutor(
+
+			// ------------------------------------------------
+			// THE SINGLE EVENT PIPELINE
+			// ------------------------------------------------
 
 			func(event graph.Event) {
 
@@ -46,6 +50,10 @@ func main() {
 					event,
 				)
 			},
+
+			// ------------------------------------------------
+			// Register every new run immediately.
+			// ------------------------------------------------
 
 			func(run *graph.Run) {
 
@@ -67,7 +75,9 @@ func main() {
 
 	api :=
 		server.NewServer(
+
 			eventBus,
+
 			runManager,
 
 			func(initial graph.State) *graph.Run {
@@ -81,14 +91,23 @@ func main() {
 		)
 
 	// ============================================================
-	// Start server
+	// HTTP server
 	// ============================================================
 
 	fmt.Println()
 	fmt.Println(
-		"Go coding harness",
+		"========================================",
 	)
 
+	fmt.Println(
+		"        GO CODING HARNESS",
+	)
+
+	fmt.Println(
+		"========================================",
+	)
+
+	fmt.Println()
 	fmt.Println(
 		"API: http://localhost:8080",
 	)
@@ -110,19 +129,17 @@ func main() {
 }
 
 // ============================================================
-// Build graph
+// Graph
 // ============================================================
 
-func buildGraph(
-	eventBus *server.EventBus,
-) *graph.Graph {
+func buildGraph() *graph.Graph {
 
 	g :=
 		graph.NewGraph()
 
-	// ============================================================
+	// ------------------------------------------------------------
 	// Planner
-	// ============================================================
+	// ------------------------------------------------------------
 
 	planner :=
 		graph.NewFuncWorker(
@@ -155,14 +172,9 @@ func buildGraph(
 		),
 	)
 
-	// ============================================================
+	// ------------------------------------------------------------
 	// Coder agent
-	// ============================================================
-
-	coderLLM :=
-		&FakeLLM{
-			Name: "coder-llm",
-		}
+	// ------------------------------------------------------------
 
 	coder :=
 		&agent.LoopAgent{
@@ -171,18 +183,17 @@ func buildGraph(
 
 			Prompt: "Implement the authentication fix.",
 
-			LLM: coderLLM,
+			LLM: &FakeLLM{
+				Name: "coder-llm",
+			},
 
 			Tools: map[string]agent.Tool{
+
 				"read_file": ReadFileTool{},
 
 				"edit_file": EditFileTool{},
 
 				"run_tests": RunTestsTool{},
-			},
-
-			Emit: func(event graph.Event) {
-				eventBus.Publish(event)
 			},
 		}
 
@@ -195,14 +206,9 @@ func buildGraph(
 		),
 	)
 
-	// ============================================================
+	// ------------------------------------------------------------
 	// Security agent
-	// ============================================================
-
-	securityLLM :=
-		&FakeLLM{
-			Name: "security-llm",
-		}
+	// ------------------------------------------------------------
 
 	security :=
 		&agent.LoopAgent{
@@ -211,14 +217,13 @@ func buildGraph(
 
 			Prompt: "Check the authentication implementation for security issues.",
 
-			LLM: securityLLM,
-
-			Tools: map[string]agent.Tool{
-				"read_file": ReadFileTool{},
+			LLM: &FakeLLM{
+				Name: "security-llm",
 			},
 
-			Emit: func(event graph.Event) {
-				eventBus.Publish(event)
+			Tools: map[string]agent.Tool{
+
+				"read_file": ReadFileTool{},
 			},
 		}
 
@@ -231,9 +236,9 @@ func buildGraph(
 		),
 	)
 
-	// ============================================================
+	// ------------------------------------------------------------
 	// Tester
-	// ============================================================
+	// ------------------------------------------------------------
 
 	tester :=
 		graph.NewFuncWorker(
@@ -280,7 +285,8 @@ func buildGraph(
 				}
 
 				return graph.State{
-					"tests_passed":  passed,
+					"tests_passed": passed,
+
 					"test_attempts": attempt,
 				}, nil
 			},
@@ -295,9 +301,9 @@ func buildGraph(
 		),
 	)
 
-	// ============================================================
+	// ------------------------------------------------------------
 	// Reviewer
-	// ============================================================
+	// ------------------------------------------------------------
 
 	reviewer :=
 		graph.NewFuncWorker(
@@ -308,7 +314,7 @@ func buildGraph(
 			) (graph.State, error) {
 
 				fmt.Println(
-					"[reviewer] Reviewing all results...",
+					"[reviewer] Reviewing...",
 				)
 
 				time.Sleep(
@@ -348,7 +354,7 @@ func buildGraph(
 
 	// planner -> security
 	//
-	// This is our parallel branch.
+	// Parallel branch.
 	must(
 		g.AddEdge(
 			"planner",
@@ -364,7 +370,7 @@ func buildGraph(
 		),
 	)
 
-	// tester -> coder when tests fail
+	// tester -> coder when failed
 	must(
 		g.AddConditionalEdge(
 			"tester",
@@ -379,7 +385,7 @@ func buildGraph(
 		),
 	)
 
-	// tester -> reviewer when tests pass
+	// tester -> reviewer when passed
 	must(
 		g.AddConditionalEdge(
 			"tester",
@@ -394,11 +400,6 @@ func buildGraph(
 		),
 	)
 
-	// security -> reviewer
-	//
-	// Reviewer therefore waits for both:
-	//
-	// tester -> reviewer
 	// security -> reviewer
 	must(
 		g.AddEdge(
@@ -427,23 +428,12 @@ func (l *FakeLLM) Generate(
 
 	l.Called++
 
-	// Coder does:
-	//
-	// 1. read_file
-	// 2. edit_file
-	// 3. run_tests
-	//
-	// Security does:
-	//
-	// 1. read_file
-	// 2. final answer
-	//
-
 	if l.Name == "coder-llm" {
 
 		switch l.Called {
 
 		case 1:
+
 			return agent.LLMResponse{
 				ToolCall: &agent.ToolCall{
 					Name: "read_file",
@@ -455,6 +445,7 @@ func (l *FakeLLM) Generate(
 			}, nil
 
 		case 2:
+
 			return agent.LLMResponse{
 				ToolCall: &agent.ToolCall{
 					Name: "edit_file",
@@ -466,6 +457,7 @@ func (l *FakeLLM) Generate(
 			}, nil
 
 		case 3:
+
 			return agent.LLMResponse{
 				ToolCall: &agent.ToolCall{
 					Name: "run_tests",
@@ -473,6 +465,7 @@ func (l *FakeLLM) Generate(
 			}, nil
 
 		default:
+
 			return agent.LLMResponse{
 				Text: "Authentication fix implemented.",
 			}, nil
@@ -540,7 +533,8 @@ func (EditFileTool) Execute(
 
 	return map[string]any{
 		"changed": true,
-		"path":    input["path"],
+
+		"path": input["path"],
 	}, nil
 }
 
@@ -565,7 +559,7 @@ func (RunTestsTool) Execute(
 }
 
 // ============================================================
-// Event printing
+// Console event output
 // ============================================================
 
 func printEvent(
@@ -578,6 +572,12 @@ func printEvent(
 		extra +=
 			" agent=" +
 				event.AgentID
+	}
+
+	if event.WorkerID != "" {
+		extra +=
+			" worker=" +
+				event.WorkerID
 	}
 
 	if event.ToolID != "" {
@@ -598,7 +598,7 @@ func printEvent(
 	case graph.EventNodeStarted:
 
 		fmt.Printf(
-			"[EVENT] NODE STARTED %-10s%s\n",
+			"[EVENT] NODE STARTED %s%s\n",
 			event.NodeID,
 			extra,
 		)
@@ -606,14 +606,14 @@ func printEvent(
 	case graph.EventNodeCompleted:
 
 		fmt.Printf(
-			"[EVENT] NODE COMPLETED %-10s\n",
+			"[EVENT] NODE COMPLETED %s\n",
 			event.NodeID,
 		)
 
 	case graph.EventNodeFailed:
 
 		fmt.Printf(
-			"[EVENT] NODE FAILED %-10s %s\n",
+			"[EVENT] NODE FAILED %s %s\n",
 			event.NodeID,
 			event.Message,
 		)
@@ -623,6 +623,20 @@ func printEvent(
 		fmt.Printf(
 			"[EVENT] EDGE %s\n",
 			event.Message,
+		)
+
+	case graph.EventWorkerStarted:
+
+		fmt.Printf(
+			"[EVENT] WORKER STARTED %s\n",
+			event.WorkerID,
+		)
+
+	case graph.EventWorkerCompleted:
+
+		fmt.Printf(
+			"[EVENT] WORKER COMPLETED %s\n",
+			event.WorkerID,
 		)
 
 	case graph.EventAgentStarted:

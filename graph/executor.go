@@ -64,7 +64,6 @@ type EventHandler func(Event)
 type Executor struct {
 	OnEvent EventHandler
 
-	// Called as soon as Run is created.
 	OnRun func(*Run)
 }
 
@@ -78,7 +77,9 @@ func NewExecutor(
 	}
 }
 
-func (e *Executor) emit(event Event) {
+func (e *Executor) emit(
+	event Event,
+) {
 	if e.OnEvent != nil {
 		e.OnEvent(event)
 	}
@@ -110,11 +111,13 @@ func (e *Executor) Start(
 	}
 
 	go func() {
+
 		_, _, _ = e.run(
 			ctx,
 			run,
 			initial,
 		)
+
 	}()
 
 	return run
@@ -269,7 +272,7 @@ func (e *Executor) run(
 		}
 
 		// --------------------------------------------------
-		// Merge all outputs only after the wave completes.
+		// Merge wave outputs.
 		// --------------------------------------------------
 
 		for _, execution := range results {
@@ -282,6 +285,7 @@ func (e *Executor) run(
 				state,
 			)
 
+			// Routing is evaluated by the executor.
 			e.activateOutgoingEdges(
 				run,
 				execution.NodeID,
@@ -323,7 +327,6 @@ func (e *Executor) findReadyNodes(
 			continue
 		}
 
-		// Consume one activation.
 		if !run.ConsumeNodeActivation(
 			nodeID,
 		) {
@@ -346,7 +349,6 @@ func (e *Executor) dependenciesCompleted(
 
 	for _, edge := range run.Graph.Incoming(nodeID) {
 
-		// Only selected edges matter.
 		if !run.IsEdgeActivated(
 			edge.ID,
 		) {
@@ -421,7 +423,6 @@ func (e *Executor) activateOutgoingEdges(
 		activate := true
 
 		if edge.Condition != nil {
-
 			activate =
 				edge.Condition(state)
 		}
@@ -495,7 +496,6 @@ func (e *Executor) executeWave(
 			defer wg.Done()
 
 			execution := &NodeExecution{
-
 				ID: fmt.Sprintf(
 					"%s-%d",
 					node.ID,
@@ -521,6 +521,13 @@ func (e *Executor) executeWave(
 				execution,
 			)
 
+			// ------------------------------------------------
+			// Execution context.
+			//
+			// Anything underneath this node can emit events
+			// through graph.EmitEvent(ctx, event).
+			// ------------------------------------------------
+
 			execCtx :=
 				WithExecutionContext(
 					ctx,
@@ -530,6 +537,10 @@ func (e *Executor) executeWave(
 						ExecutionID: execution.ID,
 
 						NodeID: node.ID,
+
+						WorkerID: node.Worker.ID(),
+
+						EventSink: e.emit,
 					},
 				)
 
@@ -564,6 +575,10 @@ func (e *Executor) executeWave(
 
 				WorkerID: node.Worker.ID(),
 			})
+
+			// ------------------------------------------------
+			// Execute worker.
+			// ------------------------------------------------
 
 			result, err :=
 				node.Worker.Run(
@@ -659,6 +674,7 @@ func (e *Executor) executeWave(
 			)
 
 			mu.Unlock()
+
 		}()
 	}
 
@@ -667,9 +683,11 @@ func (e *Executor) executeWave(
 	select {
 
 	case err := <-errs:
+
 		return nil, err
 
 	default:
+
 		return results, nil
 	}
 }

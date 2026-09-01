@@ -18,14 +18,9 @@ type Run struct {
 
 	Executions []*NodeExecution
 
-	// Nodes that have been triggered but whose
-	// activation hasn't yet been consumed.
 	ActivatedNodes map[string]bool
-
-	// Edges actually selected during this run.
 	ActivatedEdges map[string]bool
 
-	// Materialized workflow state.
 	State State
 
 	mu sync.RWMutex
@@ -35,6 +30,8 @@ type Run struct {
 // Execution context
 // ------------------------------------------------------------
 
+type EventSink func(Event)
+
 type executionContextKey string
 
 const executionContextKeyName executionContextKey = "graph-execution"
@@ -43,6 +40,8 @@ type ExecutionContext struct {
 	RunID       string
 	ExecutionID string
 	NodeID      string
+	WorkerID    string
+	EventSink   EventSink
 }
 
 func WithExecutionContext(
@@ -73,6 +72,33 @@ func GetExecutionContext(
 		value.(ExecutionContext)
 
 	return execution, ok
+}
+
+// ------------------------------------------------------------
+// Emit an event through the current execution.
+// ------------------------------------------------------------
+
+func EmitEvent(
+	ctx context.Context,
+	event Event,
+) {
+
+	execution, ok :=
+		GetExecutionContext(ctx)
+
+	if !ok {
+		return
+	}
+
+	// Automatically attach execution metadata.
+	event.RunID = execution.RunID
+	event.NodeID = execution.NodeID
+	event.ExecutionID = execution.ExecutionID
+	event.WorkerID = execution.WorkerID
+
+	if execution.EventSink != nil {
+		execution.EventSink(event)
+	}
 }
 
 // ------------------------------------------------------------

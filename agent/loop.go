@@ -45,8 +45,6 @@ type LoopAgent struct {
 	LLM LLM
 
 	Tools map[string]Tool
-
-	Emit func(graph.Event)
 }
 
 func (a *LoopAgent) ID() string {
@@ -54,7 +52,7 @@ func (a *LoopAgent) ID() string {
 }
 
 // ------------------------------------------------------------
-// Worker interface
+// Worker implementation
 // ------------------------------------------------------------
 
 func (a *LoopAgent) Run(
@@ -62,13 +60,14 @@ func (a *LoopAgent) Run(
 	input graph.WorkerInput,
 ) (graph.WorkerResult, error) {
 
-	result, err := a.runAgent(
-		ctx,
-		Input{
-			Message: a.Prompt,
-			State:   input.State,
-		},
-	)
+	result, err :=
+		a.runAgent(
+			ctx,
+			Input{
+				Message: a.Prompt,
+				State:   input.State,
+			},
+		)
 
 	if err != nil {
 		return graph.WorkerResult{}, err
@@ -78,7 +77,9 @@ func (a *LoopAgent) Run(
 		"agent_output": result.Output,
 	}
 
-	output.Merge(result.State)
+	output.Merge(
+		result.State,
+	)
 
 	return graph.WorkerResult{
 		State: output,
@@ -94,7 +95,7 @@ func (a *LoopAgent) runAgent(
 	input Input,
 ) (Result, error) {
 
-	execution, ok :=
+	_, ok :=
 		graph.GetExecutionContext(ctx)
 
 	if !ok {
@@ -104,17 +105,20 @@ func (a *LoopAgent) runAgent(
 		)
 	}
 
-	a.emit(graph.Event{
-		Time:        time.Now(),
-		RunID:       execution.RunID,
-		Type:        graph.EventAgentStarted,
-		NodeID:      execution.NodeID,
-		ExecutionID: execution.ExecutionID,
-		AgentID:     a.AgentID,
-		Data: map[string]any{
-			"message": input.Message,
+	graph.EmitEvent(
+		ctx,
+		graph.Event{
+			Time: time.Now(),
+
+			Type: graph.EventAgentStarted,
+
+			AgentID: a.AgentID,
+
+			Data: map[string]any{
+				"message": input.Message,
+			},
 		},
-	})
+	)
 
 	messages := []Message{
 		{
@@ -124,18 +128,21 @@ func (a *LoopAgent) runAgent(
 	}
 
 	for {
+
 		// --------------------------------------------------
-		// Ask LLM
+		// LLM
 		// --------------------------------------------------
 
-		a.emit(graph.Event{
-			Time:        time.Now(),
-			RunID:       execution.RunID,
-			Type:        graph.EventLLMStarted,
-			NodeID:      execution.NodeID,
-			ExecutionID: execution.ExecutionID,
-			AgentID:     a.AgentID,
-		})
+		graph.EmitEvent(
+			ctx,
+			graph.Event{
+				Time: time.Now(),
+
+				Type: graph.EventLLMStarted,
+
+				AgentID: a.AgentID,
+			},
+		)
 
 		response, err :=
 			a.LLM.Generate(
@@ -147,35 +154,41 @@ func (a *LoopAgent) runAgent(
 			return Result{}, err
 		}
 
-		a.emit(graph.Event{
-			Time:        time.Now(),
-			RunID:       execution.RunID,
-			Type:        graph.EventLLMCompleted,
-			NodeID:      execution.NodeID,
-			ExecutionID: execution.ExecutionID,
-			AgentID:     a.AgentID,
-			Data: map[string]any{
-				"hasToolCall": response.ToolCall != nil,
+		graph.EmitEvent(
+			ctx,
+			graph.Event{
+				Time: time.Now(),
+
+				Type: graph.EventLLMCompleted,
+
+				AgentID: a.AgentID,
+
+				Data: map[string]any{
+					"hasToolCall": response.ToolCall != nil,
+				},
 			},
-		})
+		)
 
 		// --------------------------------------------------
-		// No tool call = agent finished
+		// Finished
 		// --------------------------------------------------
 
 		if response.ToolCall == nil {
 
-			a.emit(graph.Event{
-				Time:        time.Now(),
-				RunID:       execution.RunID,
-				Type:        graph.EventAgentCompleted,
-				NodeID:      execution.NodeID,
-				ExecutionID: execution.ExecutionID,
-				AgentID:     a.AgentID,
-				Data: map[string]any{
-					"output": response.Text,
+			graph.EmitEvent(
+				ctx,
+				graph.Event{
+					Time: time.Now(),
+
+					Type: graph.EventAgentCompleted,
+
+					AgentID: a.AgentID,
+
+					Data: map[string]any{
+						"output": response.Text,
+					},
 				},
-			})
+			)
 
 			return Result{
 				Output: response.Text,
@@ -183,10 +196,11 @@ func (a *LoopAgent) runAgent(
 		}
 
 		// --------------------------------------------------
-		// Tool call
+		// Tool
 		// --------------------------------------------------
 
-		call := response.ToolCall
+		call :=
+			response.ToolCall
 
 		tool, ok :=
 			a.Tools[call.Name]
@@ -199,18 +213,22 @@ func (a *LoopAgent) runAgent(
 			)
 		}
 
-		a.emit(graph.Event{
-			Time:        time.Now(),
-			RunID:       execution.RunID,
-			Type:        graph.EventToolStarted,
-			NodeID:      execution.NodeID,
-			ExecutionID: execution.ExecutionID,
-			AgentID:     a.AgentID,
-			ToolID:      call.Name,
-			Data: map[string]any{
-				"input": call.Input,
+		graph.EmitEvent(
+			ctx,
+			graph.Event{
+				Time: time.Now(),
+
+				Type: graph.EventToolStarted,
+
+				AgentID: a.AgentID,
+
+				ToolID: call.Name,
+
+				Data: map[string]any{
+					"input": call.Input,
+				},
 			},
-		})
+		)
 
 		toolResult, err :=
 			tool.Execute(
@@ -220,65 +238,65 @@ func (a *LoopAgent) runAgent(
 
 		if err != nil {
 
-			a.emit(graph.Event{
-				Time:        time.Now(),
-				RunID:       execution.RunID,
-				Type:        graph.EventToolFailed,
-				NodeID:      execution.NodeID,
-				ExecutionID: execution.ExecutionID,
-				AgentID:     a.AgentID,
-				ToolID:      call.Name,
-				Message:     err.Error(),
-			})
+			graph.EmitEvent(
+				ctx,
+				graph.Event{
+					Time: time.Now(),
+
+					Type: graph.EventToolFailed,
+
+					AgentID: a.AgentID,
+
+					ToolID: call.Name,
+
+					Message: err.Error(),
+				},
+			)
 
 			return Result{}, err
 		}
 
-		a.emit(graph.Event{
-			Time:        time.Now(),
-			RunID:       execution.RunID,
-			Type:        graph.EventToolCompleted,
-			NodeID:      execution.NodeID,
-			ExecutionID: execution.ExecutionID,
-			AgentID:     a.AgentID,
-			ToolID:      call.Name,
-			Data: map[string]any{
-				"output": toolResult,
+		graph.EmitEvent(
+			ctx,
+			graph.Event{
+				Time: time.Now(),
+
+				Type: graph.EventToolCompleted,
+
+				AgentID: a.AgentID,
+
+				ToolID: call.Name,
+
+				Data: map[string]any{
+					"output": toolResult,
+				},
 			},
-		})
+		)
 
 		// --------------------------------------------------
-		// Feed tool result back to LLM
+		// Feed result back into conversation.
 		// --------------------------------------------------
 
 		messages = append(
 			messages,
+
 			Message{
 				Role: "assistant",
+
 				Content: fmt.Sprintf(
 					"calling tool %s",
 					call.Name,
 				),
 			},
+
 			Message{
 				Role: "tool",
+
 				Content: fmt.Sprintf(
 					"%v",
 					toolResult,
 				),
 			},
 		)
-	}
-}
-
-// ------------------------------------------------------------
-// Event helper
-// ------------------------------------------------------------
-
-func (a *LoopAgent) emit(
-	event graph.Event,
-) {
-	if a.Emit != nil {
-		a.Emit(event)
 	}
 }
