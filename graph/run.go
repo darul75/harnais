@@ -133,7 +133,7 @@ func (r *Run) ConsumeNodeActivation(
 }
 
 // ------------------------------------------------------------
-// Executions
+// Node executions
 // ------------------------------------------------------------
 
 func (r *Run) AddExecution(
@@ -289,6 +289,7 @@ func (r *Run) StartAgentExecution(
 	nodeExecutionID string,
 	agentID string,
 ) *AgentExecution {
+
 	execution := &AgentExecution{
 		ID: runtimeID("agent"),
 
@@ -299,6 +300,11 @@ func (r *Run) StartAgentExecution(
 		Status: StatusRunning,
 
 		StartedAt: time.Now(),
+
+		Activities: make(
+			[]*AgentActivity,
+			0,
+		),
 	}
 
 	r.mu.Lock()
@@ -316,7 +322,7 @@ func (r *Run) StartAgentExecution(
 
 func (r *Run) CompleteAgentExecution(
 	agentExecutionID string,
-	outputError error,
+	err error,
 ) {
 	now := time.Now()
 
@@ -327,20 +333,19 @@ func (r *Run) CompleteAgentExecution(
 
 		if execution.ID !=
 			agentExecutionID {
-
 			continue
 		}
 
 		execution.CompletedAt =
 			&now
 
-		if outputError != nil {
+		if err != nil {
 
 			execution.Status =
 				StatusFailed
 
 			execution.Error =
-				outputError.Error()
+				err.Error()
 
 		} else {
 
@@ -353,18 +358,111 @@ func (r *Run) CompleteAgentExecution(
 }
 
 // ------------------------------------------------------------
+// Agent activities
+// ------------------------------------------------------------
+
+func (r *Run) StartAgentActivity(
+	agentExecutionID string,
+	sequence int,
+	kind AgentActivityKind,
+) *AgentActivity {
+
+	activity := &AgentActivity{
+		ID: runtimeID("activity"),
+
+		AgentExecutionID: agentExecutionID,
+
+		Sequence: sequence,
+
+		Kind: kind,
+
+		Status: StatusRunning,
+
+		StartedAt: time.Now(),
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.attachActivityLocked(
+		activity,
+	)
+
+	return activity
+}
+
+func (r *Run) attachActivityLocked(
+	activity *AgentActivity,
+) {
+	for _, execution := range r.AgentExecutions {
+
+		if execution.ID !=
+			activity.AgentExecutionID {
+			continue
+		}
+
+		execution.Activities =
+			append(
+				execution.Activities,
+				activity,
+			)
+
+		return
+	}
+}
+
+func (r *Run) CompleteAgentActivity(
+	activityID string,
+	err error,
+) {
+
+	now := time.Now()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, execution := range r.AgentExecutions {
+
+		for _, activity := range execution.Activities {
+
+			if activity.ID !=
+				activityID {
+				continue
+			}
+
+			activity.CompletedAt =
+				&now
+
+			if err != nil {
+				activity.Status =
+					StatusFailed
+			} else {
+				activity.Status =
+					StatusCompleted
+			}
+
+			return
+		}
+	}
+}
+
+// ------------------------------------------------------------
 // LLM calls
 // ------------------------------------------------------------
 
 func (r *Run) StartLLMCall(
 	agentExecutionID string,
+	activityID string,
 	sequence int,
 	messages []MessageRecord,
 ) *LLMCall {
+
 	call := &LLMCall{
 		ID: runtimeID("llm"),
 
 		AgentExecutionID: agentExecutionID,
+
+		ActivityID: activityID,
 
 		Sequence: sequence,
 
@@ -418,15 +516,12 @@ func (r *Run) CompleteLLMCall(
 			requestedTool
 
 		if err != nil {
-
 			call.Status =
 				StatusFailed
 
 			call.Error =
 				err.Error()
-
 		} else {
-
 			call.Status =
 				StatusCompleted
 		}
@@ -441,14 +536,18 @@ func (r *Run) CompleteLLMCall(
 
 func (r *Run) StartToolCall(
 	agentExecutionID string,
+	activityID string,
 	sequence int,
 	toolID string,
 	input map[string]any,
 ) *ToolCall {
+
 	call := &ToolCall{
 		ID: runtimeID("tool"),
 
 		AgentExecutionID: agentExecutionID,
+
+		ActivityID: activityID,
 
 		Sequence: sequence,
 
@@ -497,15 +596,12 @@ func (r *Run) CompleteToolCall(
 			output
 
 		if err != nil {
-
 			call.Status =
 				StatusFailed
 
 			call.Error =
 				err.Error()
-
 		} else {
-
 			call.Status =
 				StatusCompleted
 		}

@@ -43,10 +43,14 @@ type agentTree struct {
 
 	Status graph.Status `json:"status"`
 
-	StartedAt   time.Time  `json:"startedAt"`
+	StartedAt time.Time `json:"startedAt"`
+
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
 
-	LLMCalls  []*graph.LLMCall  `json:"llmCalls"`
+	Activities []*graph.AgentActivity `json:"activities"`
+
+	LLMCalls []*graph.LLMCall `json:"llmCalls"`
+
 	ToolCalls []*graph.ToolCall `json:"toolCalls"`
 }
 
@@ -178,20 +182,23 @@ func (s *Server) getExecutionTree(
 			agentExecution :=
 				agentExecutions[0]
 
-			node.Agent =
-				&agentTree{
-					ID: agentExecution.ID,
+			node.Agent = &agentTree{
+				ID: agentExecution.ID,
 
-					AgentID: agentExecution.AgentID,
+				AgentID: agentExecution.AgentID,
 
-					Status: agentExecution.Status,
+				Status: agentExecution.Status,
 
-					StartedAt: agentExecution.StartedAt,
+				StartedAt: agentExecution.StartedAt,
 
-					LLMCalls: llmByAgent[agentExecution.ID],
+				CompletedAt: agentExecution.CompletedAt,
 
-					ToolCalls: toolsByAgent[agentExecution.ID],
-				}
+				Activities: agentExecution.Activities,
+
+				LLMCalls: llmByAgent[agentExecution.ID],
+
+				ToolCalls: toolsByAgent[agentExecution.ID],
+			}
 
 			if agentExecution.CompletedAt != nil {
 

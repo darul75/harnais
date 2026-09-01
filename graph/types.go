@@ -53,8 +53,6 @@ type Node struct {
 
 	Worker Worker
 
-	// If true, all incoming runtime activations must be
-	// available before this node executes.
 	JoinAll bool
 }
 
@@ -152,6 +150,39 @@ type AgentExecution struct {
 	CompletedAt *time.Time `json:"completedAt,omitempty"`
 
 	Error string `json:"error,omitempty"`
+
+	Activities []*AgentActivity `json:"activities"`
+}
+
+// ------------------------------------------------------------
+// Agent activity
+// ------------------------------------------------------------
+
+type AgentActivityKind string
+
+const (
+	ActivityLLM  AgentActivityKind = "llm"
+	ActivityTool AgentActivityKind = "tool"
+)
+
+type AgentActivity struct {
+	ID string `json:"id"`
+
+	AgentExecutionID string `json:"agentExecutionId"`
+
+	Sequence int `json:"sequence"`
+
+	Kind AgentActivityKind `json:"kind"`
+
+	LLMCallID *string `json:"llmCallId,omitempty"`
+
+	ToolCallID *string `json:"toolCallId,omitempty"`
+
+	StartedAt time.Time `json:"startedAt"`
+
+	CompletedAt *time.Time `json:"completedAt,omitempty"`
+
+	Status Status `json:"status"`
 }
 
 // ------------------------------------------------------------
@@ -168,6 +199,8 @@ type LLMCall struct {
 	ID string `json:"id"`
 
 	AgentExecutionID string `json:"agentExecutionId"`
+
+	ActivityID string `json:"activityId"`
 
 	Sequence int `json:"sequence"`
 
@@ -194,6 +227,8 @@ type ToolCall struct {
 	ID string `json:"id"`
 
 	AgentExecutionID string `json:"agentExecutionId"`
+
+	ActivityID string `json:"activityId"`
 
 	Sequence int `json:"sequence"`
 
@@ -275,17 +310,10 @@ func EmitEvent(
 		return
 	}
 
-	event.RunID =
-		execution.RunID
-
-	event.NodeID =
-		execution.NodeID
-
-	event.ExecutionID =
-		execution.ExecutionID
-
-	event.WorkerID =
-		execution.WorkerID
+	event.RunID = execution.RunID
+	event.NodeID = execution.NodeID
+	event.ExecutionID = execution.ExecutionID
+	event.WorkerID = execution.WorkerID
 
 	if execution.EventSink != nil {
 		execution.EventSink(event)

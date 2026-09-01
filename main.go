@@ -10,6 +10,7 @@ import (
 	"harnais/agent"
 	"harnais/graph"
 	"harnais/server"
+	"harnais/tools"
 )
 
 func main() {
@@ -176,24 +177,40 @@ func buildGraph() *graph.Graph {
 	// Coder agent
 	// ------------------------------------------------------------
 
-	coder :=
-		&agent.LoopAgent{
-			AgentID: "coder-agent",
+	workspace :=
+		tools.NewWorkspace(
+			"./workspace",
+		)
 
-			Prompt: "Implement the authentication fix.",
+	coder := &agent.LoopAgent{
+		AgentID: "coder-agent",
 
-			LLMFactory: func() agent.LLM {
-				return &FakeLLM{
-					Name: "coder-llm",
-				}
+		Prompt: "Implement the authentication fix.",
+
+		LLMFactory: func() agent.LLM {
+			return &FakeLLM{
+				Name: "coder-llm",
+			}
+		},
+
+		Tools: map[string]agent.Tool{
+			"read_file": tools.ReadFile{
+				Workspace: workspace,
 			},
 
-			Tools: map[string]agent.Tool{
-				"read_file": ReadFileTool{},
-				"edit_file": EditFileTool{},
-				"run_tests": RunTestsTool{},
+			"write_file": tools.WriteFile{
+				Workspace: workspace,
 			},
-		}
+
+			"run_command": tools.RunCommand{
+				Workspace: workspace,
+			},
+
+			"git_diff": tools.GitDiff{
+				Workspace: workspace,
+			},
+		},
+	}
 
 	must(
 		g.AddNode(
@@ -447,6 +464,7 @@ func (l *FakeLLM) Generate(
 			return agent.LLMResponse{
 				ToolCall: &agent.ToolCall{
 					Name: "read_file",
+
 					Input: map[string]any{
 						"path": "auth.go",
 					},
@@ -456,9 +474,12 @@ func (l *FakeLLM) Generate(
 		case 2:
 			return agent.LLMResponse{
 				ToolCall: &agent.ToolCall{
-					Name: "edit_file",
+					Name: "write_file",
+
 					Input: map[string]any{
 						"path": "auth.go",
+
+						"content": "package auth\n\nfunc authenticate() bool {\n\treturn true\n}\n",
 					},
 				},
 			}, nil
@@ -466,14 +487,24 @@ func (l *FakeLLM) Generate(
 		case 3:
 			return agent.LLMResponse{
 				ToolCall: &agent.ToolCall{
-					Name:  "run_tests",
-					Input: map[string]any{},
+					Name: "run_command",
+
+					Input: map[string]any{
+						"command": "go test ./...",
+					},
+				},
+			}, nil
+
+		case 4:
+			return agent.LLMResponse{
+				ToolCall: &agent.ToolCall{
+					Name: "git_diff",
 				},
 			}, nil
 
 		default:
 			return agent.LLMResponse{
-				Text: "Authentication fix implemented.",
+				Text: "Authentication fix implemented and verified.",
 			}, nil
 		}
 	}
