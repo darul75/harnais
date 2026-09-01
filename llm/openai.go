@@ -110,6 +110,9 @@ type responseTool struct {
 type responseResponse struct {
 	ID string `json:"id"`
 
+	// Some providers expose a pre-joined text convenience
+	// field. Kept as a fallback only; the canonical source
+	// is output[].content[].text.
 	OutputText string `json:"output_text"`
 
 	Output []responseOutput `json:"output"`
@@ -125,6 +128,14 @@ type responseOutput struct {
 	Name string `json:"name"`
 
 	Arguments string `json:"arguments"`
+
+	Content []responseContent `json:"content"`
+}
+
+type responseContent struct {
+	Type string `json:"type"`
+
+	Text string `json:"text"`
 }
 
 // ------------------------------------------------------------
@@ -363,6 +374,43 @@ func (o *OpenAI) Generate(
 	return agent.LLMResponse{
 		ResponseID: result.ID,
 
-		Text: result.OutputText,
+		Text: resultText(result),
 	}, nil
+}
+
+// resultText assembles the assistant's text from the response.
+//
+// The Responses API returns text in message output items as
+// content parts (type "output_text"), not in a top-level field.
+// output_text is only used as a fallback for providers that
+// expose it.
+func resultText(
+	result responseResponse,
+) string {
+
+	if result.OutputText != "" {
+		return result.OutputText
+	}
+
+	var text string
+
+	for _, item := range result.Output {
+
+		if item.Type != "message" {
+			continue
+		}
+
+		for _, content := range item.Content {
+
+			if content.Type !=
+				"output_text" {
+				continue
+			}
+
+			text +=
+				content.Text
+		}
+	}
+
+	return text
 }
