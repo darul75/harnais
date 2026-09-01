@@ -14,6 +14,8 @@ import {
   getRun,
   getRuns,
   getRunTree,
+  getReport,
+  getReports,
   getWorkflows,
 } from "./api";
 
@@ -23,6 +25,7 @@ import type {
   ExecutionEdge,
   ExecutionNode,
   LLMCall,
+  Report,
   Run,
   RunSummary,
   RunTree,
@@ -30,6 +33,8 @@ import type {
   ToolCall,
   Workflow,
 } from "./types";
+
+import ReactMarkdown from "react-markdown";
 
 import { WorkflowView } from "./WorkflowView";
 import { SettingsView } from "./SettingsView";
@@ -1130,12 +1135,186 @@ function App() {
               </div>
             </details>
           </section>
+
+          <ReportsPanel />
         </>
       )}
         </main>
       </div>
     </div>
   );
+}
+
+// ============================================================
+// Reports panel
+// ============================================================
+
+function ReportsPanel() {
+  const [reports, setReports] =
+    useState<Report[] | null>(null);
+
+  const [selected, setSelected] =
+    useState<string | null>(null);
+
+  const [content, setContent] =
+    useState<string | null>(null);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  // ------------------------------------------------------------
+  // Load report list
+  // ------------------------------------------------------------
+
+  useEffect(() => {
+    let disposed = false;
+
+    getReports()
+      .then((list) => {
+        if (disposed) {
+          return;
+        }
+        setReports(list);
+      })
+      .catch((err) => {
+        if (disposed) {
+          return;
+        }
+        setError(String(err));
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  // ------------------------------------------------------------
+  // Open a report
+  // ------------------------------------------------------------
+
+  async function open(name: string) {
+    setSelected(name);
+    setContent(null);
+    setError(null);
+
+    try {
+      setContent(
+        await getReport(name),
+      );
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  return (
+    <section className="panel">
+      <details
+        className="panel-collapsible"
+        open
+      >
+        <summary className="panel-header">
+          <span className="caret">
+            {"\u25B8"}
+          </span>
+
+          <h2>
+            Reports
+          </h2>
+
+          <span>
+            {reports?.length ?? 0}
+          </span>
+        </summary>
+
+        <div className="reports">
+          <div className="report-list">
+            {reports?.map((report) => (
+              <button
+                key={report.name}
+                type="button"
+                className={`report-row ${
+                  selected ===
+                  report.name
+                    ? "report-selected"
+                    : ""
+                }`}
+                onClick={() =>
+                  open(report.name)
+                }
+              >
+                <span className="report-name">
+                  {report.name}
+                </span>
+
+                <span className="report-meta">
+                  {formatBytes(
+                    report.size,
+                  )}
+                </span>
+              </button>
+            ))}
+
+            {reports &&
+              reports.length ===
+                0 && (
+                <div className="empty">
+                  No reports yet.
+                </div>
+              )}
+
+            {!reports &&
+              !error && (
+                <div className="empty">
+                  Loading reports...
+                </div>
+              )}
+          </div>
+
+          <div className="report-view">
+            {error && (
+              <div className="error">
+                {error}
+              </div>
+            )}
+
+            {!selected &&
+              !error && (
+                <div className="empty">
+                  Select a report to
+                  view it.
+                </div>
+              )}
+
+            {content !== null && (
+              <div className="markdown">
+                <ReactMarkdown>
+                  {content}
+                </ReactMarkdown>
+              </div>
+            )}
+
+            {selected &&
+              content === null &&
+              !error && (
+                <div className="empty">
+                  Loading...
+                </div>
+              )}
+          </div>
+        </div>
+      </details>
+    </section>
+  );
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  return `${(bytes / 1024).toFixed(
+    1,
+  )} KB`;
 }
 
 // ============================================================

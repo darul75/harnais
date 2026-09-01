@@ -179,6 +179,7 @@ export type SettingsField = {
   label: string;
   type: SettingsFieldType;
   placeholder?: string;
+  suggestions?: string[];
   envVar?: string;
   secret?: boolean;
 };
@@ -198,4 +199,10 @@ export type Settings = {
 export type SettingsTestResult = {
   ok: boolean;
   message?: string;
+};
+
+export type Report = {
+  name: string;
+  size: number;
+  modified: string;
 };

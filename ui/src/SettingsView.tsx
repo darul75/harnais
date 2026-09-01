@@ -225,6 +225,13 @@ export function SettingsView() {
                         field.type ===
                         "secret";
 
+                      const suggestionId =
+                        field.suggestions &&
+                        field.suggestions.length >
+                          0
+                          ? `${provider.id}-${field.key}-suggestions`
+                          : undefined;
+
                       return (
                         <label
                           key={field.key}
@@ -263,6 +270,9 @@ export function SettingsView() {
                               placeholder={
                                 field.placeholder
                               }
+                              list={
+                                suggestionId
+                              }
                               autoComplete="off"
                               spellCheck={false}
                             />
@@ -292,6 +302,29 @@ export function SettingsView() {
                               </button>
                             )}
                           </div>
+
+                          {suggestionId && (
+                            <datalist
+                              id={
+                                suggestionId
+                              }
+                            >
+                              {field.suggestions?.map(
+                                (
+                                  suggestion,
+                                ) => (
+                                  <option
+                                    key={
+                                      suggestion
+                                    }
+                                    value={
+                                      suggestion
+                                    }
+                                  />
+                                ),
+                              )}
+                            </datalist>
+                          )}
                         </label>
                       );
                     },
