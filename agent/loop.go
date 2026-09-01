@@ -2,55 +2,67 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"harnais/graph"
 )
 
-type LLMResponse struct {
-	Text string
-
-	ToolCall *ToolCall
-}
-
-type ToolCall struct {
-	Name string
-
-	Input map[string]any
-}
-
-type Message struct {
-	Role string
-
-	Content string
-}
-
-type LLM interface {
-	Generate(
-		ctx context.Context,
-		messages []Message,
-	) (LLMResponse, error)
-}
+// ------------------------------------------------------------
+// LoopAgent
+// ------------------------------------------------------------
+//
+// A LoopAgent is a graph Worker.
+//
+// The graph executor invokes:
+//
+//	Node -> Worker -> LoopAgent
+//
+// The LoopAgent then performs:
+//
+//	LLM -> Tool -> LLM -> Tool -> ... -> final response
+//
+// The LoopAgent knows about:
+//   - the LLM
+//   - the available tools
+//   - the agent execution
+//
+// It does NOT know about:
+//   - EventBus
+//   - HTTP
+//   - SSE
+//   - React
+//
 
 type LoopAgent struct {
 	AgentID string
 
 	Prompt string
 
+	// Used when an LLM instance is provided directly.
 	LLM LLM
 
+	// Preferred when every AgentExecution should receive
+	// its own independent LLM instance/state.
 	LLMFactory func() LLM
 
-	Tools map[string]Tool
+	ToolRegistry *ToolRegistry
 }
+
+// ------------------------------------------------------------
+// Worker interface
+// ------------------------------------------------------------
 
 func (a *LoopAgent) ID() string {
 	return a.AgentID
 }
 
-func (a *LoopAgent) newLLM() LLM {
+// ------------------------------------------------------------
+// LLM factory
+// ------------------------------------------------------------
 
+func (a *LoopAgent) newLLM() LLM {
 	if a.LLMFactory != nil {
 		return a.LLMFactory()
 	}
@@ -58,10 +70,18 @@ func (a *LoopAgent) newLLM() LLM {
 	return a.LLM
 }
 
+// ------------------------------------------------------------
+// Worker.Run
+// ------------------------------------------------------------
+
 func (a *LoopAgent) Run(
 	ctx context.Context,
 	input graph.WorkerInput,
 ) (graph.WorkerResult, error) {
+
+	// --------------------------------------------------------
+	// Get graph execution context.
+	// --------------------------------------------------------
 
 	executionContext, ok :=
 		graph.GetExecutionContext(ctx)
@@ -72,6 +92,10 @@ func (a *LoopAgent) Run(
 			a.AgentID,
 		)
 	}
+
+	// --------------------------------------------------------
+	// Create runtime AgentExecution.
+	// --------------------------------------------------------
 
 	agentExecution :=
 		executionContext.Run.StartAgentExecution(
@@ -96,15 +120,24 @@ func (a *LoopAgent) Run(
 		},
 	)
 
+	// --------------------------------------------------------
+	// Run actual agent loop.
+	// --------------------------------------------------------
+
 	result, err :=
 		a.runAgent(
 			ctx,
 			agentExecution,
 			Input{
 				Message: a.Prompt,
-				State:   input.State,
+
+				State: input.State,
 			},
 		)
+
+	// --------------------------------------------------------
+	// Complete AgentExecution.
+	// --------------------------------------------------------
 
 	executionContext.Run.CompleteAgentExecution(
 		agentExecution.ID,
@@ -114,6 +147,10 @@ func (a *LoopAgent) Run(
 	if err != nil {
 		return graph.WorkerResult{}, err
 	}
+
+	// --------------------------------------------------------
+	// Convert agent result into graph state.
+	// --------------------------------------------------------
 
 	output :=
 		graph.State{
@@ -146,6 +183,10 @@ func (a *LoopAgent) Run(
 	}, nil
 }
 
+// ------------------------------------------------------------
+// Agent loop
+// ------------------------------------------------------------
+
 func (a *LoopAgent) runAgent(
 	ctx context.Context,
 	agentExecution *graph.AgentExecution,
@@ -162,7 +203,12 @@ func (a *LoopAgent) runAgent(
 		)
 	}
 
-	llm := a.newLLM()
+	// --------------------------------------------------------
+	// Obtain LLM.
+	// --------------------------------------------------------
+
+	llm :=
+		a.newLLM()
 
 	if llm == nil {
 		return Result{}, fmt.Errorf(
@@ -171,27 +217,76 @@ func (a *LoopAgent) runAgent(
 		)
 	}
 
+	// --------------------------------------------------------
+	// Obtain tool definitions.
+	// --------------------------------------------------------
+
+	var toolDefinitions []ToolDefinition
+
+	if a.ToolRegistry != nil {
+		toolDefinitions =
+			a.ToolRegistry.Definitions()
+	}
+
+	// --------------------------------------------------------
+	// Serialize runtime state.
+	// --------------------------------------------------------
+
+	stateJSON, err :=
+		json.MarshalIndent(
+			input.State,
+			"",
+			"  ",
+		)
+
+	if err != nil {
+		return Result{}, fmt.Errorf(
+			"serialize agent state: %w",
+			err,
+		)
+	}
+
+	// --------------------------------------------------------
+	// Initial conversation.
+	// --------------------------------------------------------
+
 	messages :=
 		[]Message{
 			{
 				Role: "user",
 
-				Content: input.Message,
+				Content: fmt.Sprintf(
+					"%s\n\nRuntime state:\n%s",
+					input.Message,
+					string(stateJSON),
+				),
 			},
 		}
+
+	// --------------------------------------------------------
+	// Sequence numbers.
+	// --------------------------------------------------------
 
 	activitySequence := 0
 	llmSequence := 0
 	toolSequence := 0
 
+	// --------------------------------------------------------
+	// Agent loop.
+	// --------------------------------------------------------
+
 	for {
 
 		// ========================================================
-		// LLM
+		// LLM activity
 		// ========================================================
 
 		activitySequence++
 		llmSequence++
+
+		// --------------------------------------------------------
+		// Record messages for observability.
+		// --------------------------------------------------------
 
 		messageRecords :=
 			make(
@@ -213,12 +308,20 @@ func (a *LoopAgent) runAgent(
 				)
 		}
 
+		// --------------------------------------------------------
+		// Create activity.
+		// --------------------------------------------------------
+
 		activity :=
 			executionContext.Run.StartAgentActivity(
 				agentExecution.ID,
 				activitySequence,
 				graph.ActivityLLM,
 			)
+
+		// --------------------------------------------------------
+		// Create LLM call.
+		// --------------------------------------------------------
 
 		llmCall :=
 			executionContext.Run.StartLLMCall(
@@ -227,6 +330,10 @@ func (a *LoopAgent) runAgent(
 				llmSequence,
 				messageRecords,
 			)
+
+		// --------------------------------------------------------
+		// Emit llm.started.
+		// --------------------------------------------------------
 
 		graph.EmitEvent(
 			ctx,
@@ -249,10 +356,15 @@ func (a *LoopAgent) runAgent(
 			},
 		)
 
+		// --------------------------------------------------------
+		// Call LLM.
+		// --------------------------------------------------------
+
 		response, err :=
 			llm.Generate(
 				ctx,
 				messages,
+				toolDefinitions,
 			)
 
 		requestedTool := ""
@@ -261,6 +373,10 @@ func (a *LoopAgent) runAgent(
 			requestedTool =
 				response.ToolCall.Name
 		}
+
+		// --------------------------------------------------------
+		// Store LLM result.
+		// --------------------------------------------------------
 
 		executionContext.Run.CompleteLLMCall(
 			llmCall.ID,
@@ -273,6 +389,10 @@ func (a *LoopAgent) runAgent(
 			activity.ID,
 			err,
 		)
+
+		// --------------------------------------------------------
+		// LLM error.
+		// --------------------------------------------------------
 
 		if err != nil {
 
@@ -302,6 +422,10 @@ func (a *LoopAgent) runAgent(
 			return Result{}, err
 		}
 
+		// --------------------------------------------------------
+		// Emit llm.completed.
+		// --------------------------------------------------------
+
 		graph.EmitEvent(
 			ctx,
 			graph.Event{
@@ -328,24 +452,34 @@ func (a *LoopAgent) runAgent(
 		)
 
 		// ========================================================
-		// Done
+		// Final answer
 		// ========================================================
 
 		if response.ToolCall == nil {
+
 			return Result{
 				Output: response.Text,
 			}, nil
 		}
 
 		// ========================================================
-		// Tool
+		// Tool call
 		// ========================================================
 
 		call :=
 			response.ToolCall
 
+		if a.ToolRegistry == nil {
+			return Result{}, fmt.Errorf(
+				"agent %q has no tool registry",
+				a.AgentID,
+			)
+		}
+
 		tool, exists :=
-			a.Tools[call.Name]
+			a.ToolRegistry.Get(
+				call.Name,
+			)
 
 		if !exists {
 			return Result{}, fmt.Errorf(
@@ -354,6 +488,10 @@ func (a *LoopAgent) runAgent(
 				call.Name,
 			)
 		}
+
+		// --------------------------------------------------------
+		// Create tool activity.
+		// --------------------------------------------------------
 
 		activitySequence++
 		toolSequence++
@@ -365,6 +503,10 @@ func (a *LoopAgent) runAgent(
 				graph.ActivityTool,
 			)
 
+		// --------------------------------------------------------
+		// Create ToolCall.
+		// --------------------------------------------------------
+
 		toolCall :=
 			executionContext.Run.StartToolCall(
 				agentExecution.ID,
@@ -373,6 +515,10 @@ func (a *LoopAgent) runAgent(
 				call.Name,
 				call.Input,
 			)
+
+		// --------------------------------------------------------
+		// Emit tool.started.
+		// --------------------------------------------------------
 
 		graph.EmitEvent(
 			ctx,
@@ -399,11 +545,19 @@ func (a *LoopAgent) runAgent(
 			},
 		)
 
+		// --------------------------------------------------------
+		// Execute tool.
+		// --------------------------------------------------------
+
 		toolResult, err :=
 			tool.Execute(
 				ctx,
 				call.Input,
 			)
+
+		// --------------------------------------------------------
+		// Store tool result.
+		// --------------------------------------------------------
 
 		executionContext.Run.CompleteToolCall(
 			toolCall.ID,
@@ -415,6 +569,14 @@ func (a *LoopAgent) runAgent(
 			toolActivity.ID,
 			err,
 		)
+
+		// --------------------------------------------------------
+		// Tool failure
+		// --------------------------------------------------------
+		//
+		// A tool failure is returned to the LLM as information.
+		// It does not automatically terminate the agent.
+		//
 
 		if err != nil {
 
@@ -443,8 +605,29 @@ func (a *LoopAgent) runAgent(
 				},
 			)
 
-			return Result{}, err
+			// Give the LLM a chance to recover.
+			messages =
+				append(
+					messages,
+
+					Message{
+						Role: "tool",
+
+						Content: fmt.Sprintf(
+							"Tool execution failed: %s",
+							err.Error(),
+						),
+
+						CallID: call.CallID,
+					},
+				)
+
+			continue
 		}
+
+		// --------------------------------------------------------
+		// Tool completed.
+		// --------------------------------------------------------
 
 		graph.EmitEvent(
 			ctx,
@@ -471,9 +654,9 @@ func (a *LoopAgent) runAgent(
 			},
 		)
 
-		// ========================================================
-		// Continue conversation
-		// ========================================================
+		// --------------------------------------------------------
+		// Add successful tool output to conversation.
+		// --------------------------------------------------------
 
 		messages =
 			append(
@@ -495,6 +678,8 @@ func (a *LoopAgent) runAgent(
 						"%v",
 						toolResult,
 					),
+
+					CallID: call.CallID,
 				},
 			)
 	}

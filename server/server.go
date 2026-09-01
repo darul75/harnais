@@ -108,49 +108,44 @@ func (s *Server) createRun(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
-	var request createRunRequest
-
-	if r.ContentLength != 0 {
-
-		if err := json.NewDecoder(
-			r.Body,
-		).Decode(&request); err != nil {
-
-			http.Error(
-				w,
-				"invalid JSON",
-				http.StatusBadRequest,
-			)
-
-			return
-		}
+	var request struct {
+		Task string `json:"task"`
 	}
 
-	if request.State == nil {
-		request.State =
-			make(graph.State)
-	}
-
-	if s.StartRun == nil {
-
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(
 			w,
-			"run starter not configured",
-			http.StatusInternalServerError,
+			"invalid JSON",
+			http.StatusBadRequest,
 		)
-
 		return
 	}
 
-	run :=
-		s.StartRun(
-			request.State,
+	fmt.Printf(
+		"[HTTP] create run task=%q\n",
+		request.Task,
+	)
+
+	if request.Task == "" {
+		http.Error(
+			w,
+			"task is required",
+			http.StatusBadRequest,
 		)
+		return
+	}
+
+	run := s.StartRun(
+		graph.State{
+			"task": request.Task,
+		},
+	)
 
 	writeJSON(
 		w,
-		createRunResponse{
-			RunID: run.ID,
+		map[string]any{
+			"runId": run.ID,
+			"task":  request.Task,
 		},
 	)
 }

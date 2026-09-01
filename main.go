@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"harnais/agent"
 	"harnais/graph"
+	"harnais/llm"
 	"harnais/server"
 	"harnais/tools"
 )
@@ -40,7 +42,7 @@ func main() {
 		graph.NewExecutor(
 
 			// ------------------------------------------------
-			// THE SINGLE EVENT PIPELINE
+			// Single event pipeline
 			// ------------------------------------------------
 
 			func(event graph.Event) {
@@ -53,7 +55,7 @@ func main() {
 			},
 
 			// ------------------------------------------------
-			// Register every new run immediately.
+			// Register run
 			// ------------------------------------------------
 
 			func(run *graph.Run) {
@@ -109,6 +111,7 @@ func main() {
 	)
 
 	fmt.Println()
+
 	fmt.Println(
 		"API: http://localhost:8080",
 	)
@@ -138,20 +141,48 @@ func buildGraph() *graph.Graph {
 	g :=
 		graph.NewGraph()
 
-	// ------------------------------------------------------------
+	// ============================================================
+	// Workspace
+	// ============================================================
+
+	workspaceRoot :=
+		os.Getenv("HARNAIS_WORKSPACE")
+
+	if workspaceRoot == "" {
+		workspaceRoot =
+			"./workspace"
+	}
+
+	workspace :=
+		tools.NewWorkspace(
+			workspaceRoot,
+		)
+
+	// ============================================================
 	// Planner
-	// ------------------------------------------------------------
+	// ============================================================
 
 	planner :=
 		graph.NewFuncWorker(
 			"planner",
+
 			func(
 				ctx context.Context,
 				state graph.State,
 			) (graph.State, error) {
 
+				task, ok :=
+					state["task"].(string)
+
+				if !ok || task == "" {
+					return nil, fmt.Errorf(
+						"planner: task is missing",
+					)
+				}
+
 				fmt.Println(
-					"[planner] Creating plan...",
+					"[planner] Task:",
+					task,
 				)
 
 				time.Sleep(
@@ -159,7 +190,7 @@ func buildGraph() *graph.Graph {
 				)
 
 				return graph.State{
-					"plan": "Fix authentication bug",
+					"plan": task,
 				}, nil
 			},
 		)
@@ -167,103 +198,158 @@ func buildGraph() *graph.Graph {
 	must(
 		g.AddNode(
 			&graph.Node{
-				ID:     "planner",
+				ID: "planner",
+
 				Worker: planner,
 			},
 		),
 	)
 
-	// ------------------------------------------------------------
+	// ============================================================
 	// Coder agent
-	// ------------------------------------------------------------
+	// ============================================================
 
-	workspace :=
-		tools.NewWorkspace(
-			"./workspace",
+	coderTools :=
+		agent.NewToolRegistry(
+
+			tools.ListFiles{
+				Workspace: workspace,
+			},
+
+			tools.ReadFile{
+				Workspace: workspace,
+			},
+
+			tools.WriteFile{
+				Workspace: workspace,
+			},
+
+			tools.RunCommand{
+				Workspace: workspace,
+			},
+
+			tools.GitDiff{
+				Workspace: workspace,
+			},
 		)
 
-	coder := &agent.LoopAgent{
-		AgentID: "coder-agent",
-
-		Prompt: "Implement the authentication fix.",
-
-		LLMFactory: func() agent.LLM {
-			return &FakeLLM{
-				Name: "coder-llm",
-			}
-		},
-
-		Tools: map[string]agent.Tool{
-			"read_file": tools.ReadFile{
-				Workspace: workspace,
-			},
-
-			"write_file": tools.WriteFile{
-				Workspace: workspace,
-			},
-
-			"run_command": tools.RunCommand{
-				Workspace: workspace,
-			},
-
-			"git_diff": tools.GitDiff{
-				Workspace: workspace,
-			},
-		},
-	}
-
-	must(
-		g.AddNode(
-			&graph.Node{
-				ID:     "coder",
-				Worker: coder,
-			},
-		),
-	)
-
-	// ------------------------------------------------------------
-	// Security agent
-	// ------------------------------------------------------------
-
-	security :=
+	coder :=
 		&agent.LoopAgent{
-			AgentID: "security-agent",
 
-			Prompt: "Check the authentication implementation for security issues.",
+			AgentID: "coder-agent",
+
+			Prompt: `You are an autonomous coding agent working inside the provided workspace.
+
+A user request and workflow state are provided at runtime.
+
+Your job is to implement the user's requested change.
+
+First inspect the workspace with list_files.
+Do not assume a project type or specific files.
+Read the relevant existing code before changing anything.
+
+Implement only the requested change.
+Run appropriate tests.
+Inspect the final diff when available.
+
+Work only inside the workspace.
+Do not access the harness source code.
+Do not fabricate tool results or test results.`,
 
 			LLMFactory: func() agent.LLM {
-				return &FakeLLM{
-					Name: "security-llm",
-				}
+				return llm.NewOpenAI("", "")
 			},
 
-			Tools: map[string]agent.Tool{
-				"read_file": ReadFileTool{},
-			},
+			ToolRegistry: coderTools,
 		}
 
 	must(
 		g.AddNode(
 			&graph.Node{
-				ID:     "security",
+				ID: "coder",
+
+				Worker: coder,
+			},
+		),
+	)
+
+	// ============================================================
+	// Security agent
+	// ============================================================
+
+	securityTools :=
+		agent.NewToolRegistry(
+
+			tools.ListFiles{
+				Workspace: workspace,
+			},
+
+			tools.ReadFile{
+				Workspace: workspace,
+			},
+
+			tools.GitDiff{
+				Workspace: workspace,
+			},
+		)
+
+	security :=
+		&agent.LoopAgent{
+
+			AgentID: "security-agent",
+
+			Prompt: `You are a security review agent working inside the provided workspace.
+
+A user request and workflow state are provided at runtime.
+
+Review the implementation related to the user's request for security issues.
+
+First inspect the workspace with list_files.
+Do not assume a project type or specific files.
+Read the relevant implementation before reaching conclusions.
+
+Do not modify files.
+Use git_diff when useful.
+
+Report concrete security findings with affected files and reasoning.
+If there are no significant issues, say so explicitly.
+
+Work only inside the workspace.
+Do not fabricate findings or tool results.`,
+
+			LLMFactory: func() agent.LLM {
+
+				return llm.NewOpenAI("", "")
+			},
+
+			ToolRegistry: securityTools,
+		}
+
+	must(
+		g.AddNode(
+			&graph.Node{
+				ID: "security",
+
 				Worker: security,
 			},
 		),
 	)
 
-	// ------------------------------------------------------------
+	// ============================================================
 	// Tester
-	// ------------------------------------------------------------
+	// ============================================================
 
 	tester :=
 		graph.NewFuncWorker(
 			"tester",
+
 			func(
 				ctx context.Context,
 				state graph.State,
 			) (graph.State, error) {
 
-				attempt := 0
+				attempt :=
+					0
 
 				if value, ok :=
 					state["test_attempts"]; ok {
@@ -310,19 +396,21 @@ func buildGraph() *graph.Graph {
 	must(
 		g.AddNode(
 			&graph.Node{
-				ID:     "tester",
+				ID: "tester",
+
 				Worker: tester,
 			},
 		),
 	)
 
-	// ------------------------------------------------------------
+	// ============================================================
 	// Reviewer
-	// ------------------------------------------------------------
+	// ============================================================
 
 	reviewer :=
 		graph.NewFuncWorker(
 			"reviewer",
+
 			func(
 				ctx context.Context,
 				state graph.State,
@@ -371,8 +459,6 @@ func buildGraph() *graph.Graph {
 	)
 
 	// planner -> security
-	//
-	// Parallel branch.
 	must(
 		g.AddEdge(
 			"planner",
@@ -388,11 +474,12 @@ func buildGraph() *graph.Graph {
 		),
 	)
 
-	// tester -> coder when failed
+	// tester -> coder when tests fail
 	must(
 		g.AddConditionalEdge(
 			"tester",
 			"coder",
+
 			func(state graph.State) bool {
 
 				passed, _ :=
@@ -403,11 +490,12 @@ func buildGraph() *graph.Graph {
 		),
 	)
 
-	// tester -> reviewer when passed
+	// tester -> reviewer when tests pass
 	must(
 		g.AddConditionalEdge(
 			"tester",
 			"reviewer",
+
 			func(state graph.State) bool {
 
 				passed, _ :=
@@ -430,201 +518,32 @@ func buildGraph() *graph.Graph {
 }
 
 // ============================================================
-// Fake LLM
-// ============================================================
-
-type FakeLLM struct {
-	Name string
-
-	Called int
-}
-
-func (l *FakeLLM) Generate(
-	ctx context.Context,
-	messages []agent.Message,
-) (agent.LLMResponse, error) {
-
-	l.Called++
-
-	fmt.Printf(
-		"  [fake-llm:%s] call #%d\n",
-		l.Name,
-		l.Called,
-	)
-
-	// ------------------------------------------------------------
-	// Coder
-	// ------------------------------------------------------------
-
-	if l.Name == "coder-llm" {
-
-		switch l.Called {
-
-		case 1:
-			return agent.LLMResponse{
-				ToolCall: &agent.ToolCall{
-					Name: "read_file",
-
-					Input: map[string]any{
-						"path": "auth.go",
-					},
-				},
-			}, nil
-
-		case 2:
-			return agent.LLMResponse{
-				ToolCall: &agent.ToolCall{
-					Name: "write_file",
-
-					Input: map[string]any{
-						"path": "auth.go",
-
-						"content": "package auth\n\nfunc authenticate() bool {\n\treturn true\n}\n",
-					},
-				},
-			}, nil
-
-		case 3:
-			return agent.LLMResponse{
-				ToolCall: &agent.ToolCall{
-					Name: "run_command",
-
-					Input: map[string]any{
-						"command": "go test ./...",
-					},
-				},
-			}, nil
-
-		case 4:
-			return agent.LLMResponse{
-				ToolCall: &agent.ToolCall{
-					Name: "git_diff",
-				},
-			}, nil
-
-		default:
-			return agent.LLMResponse{
-				Text: "Authentication fix implemented and verified.",
-			}, nil
-		}
-	}
-
-	// ------------------------------------------------------------
-	// Security
-	// ------------------------------------------------------------
-
-	if l.Name == "security-llm" {
-
-		if l.Called == 1 {
-			return agent.LLMResponse{
-				ToolCall: &agent.ToolCall{
-					Name: "read_file",
-					Input: map[string]any{
-						"path": "auth.go",
-					},
-				},
-			}, nil
-		}
-
-		return agent.LLMResponse{
-			Text: "No security issues found.",
-		}, nil
-	}
-
-	return agent.LLMResponse{
-		Text: "Done.",
-	}, nil
-}
-
-// ============================================================
-// Fake tools
-// ============================================================
-
-type ReadFileTool struct{}
-
-func (ReadFileTool) ID() string {
-	return "read_file"
-}
-
-func (ReadFileTool) Execute(
-	ctx context.Context,
-	input map[string]any,
-) (map[string]any, error) {
-
-	time.Sleep(
-		500 * time.Millisecond,
-	)
-
-	return map[string]any{
-		"content": "func authenticate() { /* existing code */ }",
-	}, nil
-}
-
-type EditFileTool struct{}
-
-func (EditFileTool) ID() string {
-	return "edit_file"
-}
-
-func (EditFileTool) Execute(
-	ctx context.Context,
-	input map[string]any,
-) (map[string]any, error) {
-
-	time.Sleep(
-		700 * time.Millisecond,
-	)
-
-	return map[string]any{
-		"changed": true,
-
-		"path": input["path"],
-	}, nil
-}
-
-type RunTestsTool struct{}
-
-func (RunTestsTool) ID() string {
-	return "run_tests"
-}
-
-func (RunTestsTool) Execute(
-	ctx context.Context,
-	input map[string]any,
-) (map[string]any, error) {
-
-	time.Sleep(
-		800 * time.Millisecond,
-	)
-
-	return map[string]any{
-		"passed": true,
-	}, nil
-}
-
-// ============================================================
-// Console event output
+// Console events
 // ============================================================
 
 func printEvent(
 	event graph.Event,
 ) {
 
-	extra := ""
+	extra :=
+		""
 
 	if event.AgentID != "" {
+
 		extra +=
 			" agent=" +
 				event.AgentID
 	}
 
 	if event.WorkerID != "" {
+
 		extra +=
 			" worker=" +
 				event.WorkerID
 	}
 
 	if event.ToolID != "" {
+
 		extra +=
 			" tool=" +
 				event.ToolID
