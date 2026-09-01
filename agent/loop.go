@@ -369,9 +369,9 @@ func (a *LoopAgent) runAgent(
 
 		requestedTool := ""
 
-		if response.ToolCall != nil {
+		if len(response.ToolCalls) > 0 {
 			requestedTool =
-				response.ToolCall.Name
+				response.ToolCalls[0].Name
 		}
 
 		// --------------------------------------------------------
@@ -444,7 +444,9 @@ func (a *LoopAgent) runAgent(
 
 					"sequence": llmSequence,
 
-					"hasToolCall": response.ToolCall != nil,
+					"hasToolCall": len(
+						response.ToolCalls,
+					) > 0,
 
 					"tool": requestedTool,
 				},
@@ -455,7 +457,7 @@ func (a *LoopAgent) runAgent(
 		// Final answer
 		// ========================================================
 
-		if response.ToolCall == nil {
+		if len(response.ToolCalls) == 0 {
 
 			return Result{
 				Output: response.Text,
@@ -463,11 +465,12 @@ func (a *LoopAgent) runAgent(
 		}
 
 		// ========================================================
-		// Tool call
+		// Tool calls (a response may contain several, run in
+		// parallel by the model; execute them all before the next
+		// LLM turn).
 		// ========================================================
 
-		call :=
-			response.ToolCall
+		for _, call := range response.ToolCalls {
 
 		if a.ToolRegistry == nil {
 			return Result{}, fmt.Errorf(
@@ -682,5 +685,6 @@ func (a *LoopAgent) runAgent(
 					CallID: call.CallID,
 				},
 			)
+		}
 	}
 }

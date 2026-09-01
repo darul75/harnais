@@ -19,7 +19,19 @@ type OpenAI struct {
 
 	Client *http.Client
 
+	// BaseURL overrides the API base URL. Empty uses the default.
+	BaseURL string
+
+	// WebSearch enables the built-in Responses API web_search tool,
+	// letting the model search the web when answering.
+	WebSearch bool
+
 	PreviousResponseID string
+
+	// answeredCallIDs tracks function call IDs we already provided
+	// output for, so continuation requests only send outputs for the
+	// calls pending in the most recent response.
+	answeredCallIDs map[string]bool
 }
 
 func NewOpenAI(
@@ -174,13 +186,13 @@ type responseInput struct {
 type responseTool struct {
 	Type string `json:"type"`
 
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
 
-	Description string `json:"description"`
+	Description string `json:"description,omitempty"`
 
-	Parameters map[string]any `json:"parameters"`
+	Parameters map[string]any `json:"parameters,omitempty"`
 
-	Strict bool `json:"strict"`
+	Strict bool `json:"strict,omitempty"`
 }
 
 // ------------------------------------------------------------
@@ -281,8 +293,9 @@ func (o *OpenAI) Generate(
 		// --------------------------------------------------
 		// Continuation
 		//
-		// We expect the last message to represent the
-		// result of the function/tool call.
+		// Send function_call_output for every tool result not
+		// yet answered. This supports parallel tool calls made
+		// in a single model response.
 		// --------------------------------------------------
 
 		if len(messages) == 0 {
@@ -291,26 +304,36 @@ func (o *OpenAI) Generate(
 			)
 		}
 
-		message :=
-			messages[len(messages)-1]
-
-		if message.CallID == "" {
-			return agent.LLMResponse{}, fmt.Errorf(
-				"tool result is missing call ID",
-			)
+		if o.answeredCallIDs == nil {
+			o.answeredCallIDs =
+				map[string]bool{}
 		}
 
-		request.Input =
-			append(
-				request.Input,
-				responseInput{
-					Type: "function_call_output",
+		for _, message := range messages {
 
-					CallID: message.CallID,
+			if message.CallID == "" {
+				continue
+			}
 
-					Output: message.Content,
-				},
-			)
+			if o.answeredCallIDs[message.CallID] {
+				continue
+			}
+
+			o.answeredCallIDs[message.CallID] =
+				true
+
+			request.Input =
+				append(
+					request.Input,
+					responseInput{
+						Type: "function_call_output",
+
+						CallID: message.CallID,
+
+						Output: message.Content,
+					},
+				)
+		}
 	}
 
 	// --------------------------------------------------
@@ -336,6 +359,17 @@ func (o *OpenAI) Generate(
 			)
 	}
 
+	if o.WebSearch {
+
+		request.Tools =
+			append(
+				request.Tools,
+				responseTool{
+					Type: "web_search",
+				},
+			)
+	}
+
 	body, err :=
 		json.Marshal(request)
 
@@ -343,11 +377,19 @@ func (o *OpenAI) Generate(
 		return agent.LLMResponse{}, err
 	}
 
+	baseURL :=
+		o.BaseURL
+
+	if baseURL == "" {
+		baseURL =
+			"https://api.openai.com"
+	}
+
 	req, err :=
 		http.NewRequestWithContext(
 			ctx,
 			http.MethodPost,
-			"https://api.openai.com/v1/responses",
+			baseURL+"/v1/responses",
 			bytes.NewReader(body),
 		)
 
@@ -414,8 +456,10 @@ func (o *OpenAI) Generate(
 		result.ID
 
 	// --------------------------------------------------
-	// Function call
+	// Function calls
 	// --------------------------------------------------
+
+	var toolCalls []*agent.ToolCall
 
 	for _, item := range result.Output {
 
@@ -438,16 +482,25 @@ func (o *OpenAI) Generate(
 			)
 		}
 
+		toolCalls =
+			append(
+				toolCalls,
+				&agent.ToolCall{
+					Name: item.Name,
+
+					Input: arguments,
+
+					CallID: item.CallID,
+				},
+			)
+	}
+
+	if len(toolCalls) > 0 {
+
 		return agent.LLMResponse{
 			ResponseID: result.ID,
 
-			ToolCall: &agent.ToolCall{
-				Name: item.Name,
-
-				Input: arguments,
-
-				CallID: item.CallID,
-			},
+			ToolCalls: toolCalls,
 		}, nil
 	}
 

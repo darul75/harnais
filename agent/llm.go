@@ -5,7 +5,10 @@ import "context"
 type LLMResponse struct {
 	Text string
 
-	ToolCall *ToolCall
+	// ToolCalls are the tool calls the model requested. A single
+	// response may contain several (parallel tool calling); the
+	// caller must execute all of them before continuing.
+	ToolCalls []*ToolCall
 
 	// Provider-specific continuation identifier.
 	// For OpenAI this is the Responses API response ID.
