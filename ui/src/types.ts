@@ -39,6 +39,35 @@ export type Workflow = {
   description: string;
 };
 
+export type WorkflowNodeKind =
+  | "agent"
+  | "function"
+  | "worker";
+
+export type WorkflowNode = {
+  id: string;
+  kind: WorkflowNodeKind;
+  agentId?: string;
+  prompt?: string;
+  tools?: string[];
+  joinAll?: boolean;
+};
+
+export type WorkflowEdge = {
+  id: string;
+  from: string;
+  to: string;
+  conditional?: boolean;
+};
+
+export type WorkflowDetail = {
+  id: string;
+  title: string;
+  description: string;
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+};
+
 export type ExecutionNode = {
   id: string;
   nodeId: string;

@@ -177,6 +177,71 @@ func main() {
 
 				return info
 			},
+
+			func(id string) (*server.WorkflowDetail, bool) {
+
+				workflow, ok :=
+					registry.Get(id)
+
+				if !ok {
+					return nil, false
+				}
+
+				graphInfo :=
+					workflows.Describe(
+						workflow.Build(),
+					)
+
+				nodes := make(
+					[]server.WorkflowNodeInfo,
+					0,
+					len(graphInfo.Nodes),
+				)
+
+				for _, node := range graphInfo.Nodes {
+
+					nodes =
+						append(
+							nodes,
+							server.WorkflowNodeInfo{
+								ID:      node.ID,
+								Kind:    string(node.Kind),
+								AgentID: node.AgentID,
+								Prompt:  node.Prompt,
+								Tools:   node.Tools,
+								JoinAll: node.JoinAll,
+							},
+						)
+				}
+
+				edges := make(
+					[]server.WorkflowEdgeInfo,
+					0,
+					len(graphInfo.Edges),
+				)
+
+				for _, edge := range graphInfo.Edges {
+
+					edges =
+						append(
+							edges,
+							server.WorkflowEdgeInfo{
+								ID:          edge.ID,
+								From:        edge.From,
+								To:          edge.To,
+								Conditional: edge.Conditional,
+							},
+						)
+				}
+
+				return &server.WorkflowDetail{
+					ID:          workflow.ID,
+					Title:       workflow.Title,
+					Description: workflow.Description,
+					Nodes:       nodes,
+					Edges:       edges,
+				}, true
+			},
 		)
 
 	// ============================================================

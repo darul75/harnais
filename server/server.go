@@ -28,6 +28,42 @@ type WorkflowInfo struct {
 	Description string `json:"description"`
 }
 
+type WorkflowNodeInfo struct {
+	ID string `json:"id"`
+
+	Kind string `json:"kind"`
+
+	AgentID string `json:"agentId,omitempty"`
+
+	Prompt string `json:"prompt,omitempty"`
+
+	Tools []string `json:"tools,omitempty"`
+
+	JoinAll bool `json:"joinAll"`
+}
+
+type WorkflowEdgeInfo struct {
+	ID string `json:"id"`
+
+	From string `json:"from"`
+
+	To string `json:"to"`
+
+	Conditional bool `json:"conditional"`
+}
+
+type WorkflowDetail struct {
+	ID string `json:"id"`
+
+	Title string `json:"title"`
+
+	Description string `json:"description"`
+
+	Nodes []WorkflowNodeInfo `json:"nodes"`
+
+	Edges []WorkflowEdgeInfo `json:"edges"`
+}
+
 type Server struct {
 	Bus *EventBus
 
@@ -36,6 +72,8 @@ type Server struct {
 	StartRun StartRunFunc
 
 	Workflows func() []WorkflowInfo
+
+	GetWorkflow func(id string) (*WorkflowDetail, bool)
 }
 
 func NewServer(
@@ -43,6 +81,7 @@ func NewServer(
 	runs *RunManager,
 	startRun StartRunFunc,
 	workflows func() []WorkflowInfo,
+	getWorkflow func(id string) (*WorkflowDetail, bool),
 ) *Server {
 	return &Server{
 		Bus: bus,
@@ -52,6 +91,8 @@ func NewServer(
 		StartRun: startRun,
 
 		Workflows: workflows,
+
+		GetWorkflow: getWorkflow,
 	}
 }
 
@@ -72,6 +113,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(
 		"GET /api/workflows",
 		s.getWorkflows,
+	)
+
+	mux.HandleFunc(
+		"GET /api/workflows/{workflowID}",
+		s.getWorkflow,
 	)
 
 	mux.HandleFunc(
@@ -204,6 +250,45 @@ func (s *Server) getWorkflows(
 	writeJSON(
 		w,
 		s.Workflows(),
+	)
+}
+
+// ------------------------------------------------------------
+// Workflow detail
+// ------------------------------------------------------------
+
+func (s *Server) getWorkflow(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	workflowID :=
+		r.PathValue("workflowID")
+
+	if s.GetWorkflow == nil {
+		http.Error(
+			w,
+			"workflows not configured",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	workflow, ok :=
+		s.GetWorkflow(workflowID)
+
+	if !ok {
+		http.Error(
+			w,
+			"workflow not found",
+			http.StatusNotFound,
+		)
+		return
+	}
+
+	writeJSON(
+		w,
+		workflow,
 	)
 }
 

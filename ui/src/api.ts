@@ -1,4 +1,8 @@
-import type { RunSummary, Workflow } from "./types";
+import type {
+  WorkflowDetail,
+  RunSummary,
+  Workflow,
+} from "./types";
 
 export class ApiError extends Error {
   status: number;
@@ -55,6 +59,23 @@ export async function getWorkflows() {
   }
 
   return (await response.json()) as Workflow[];
+}
+
+export async function getWorkflow(
+  workflowId: string,
+) {
+  const response = await fetch(
+    `${API_BASE}/api/workflows/${encodeURIComponent(workflowId)}`,
+  );
+
+  if (!response.ok) {
+    throw new ApiError(
+      await response.text(),
+      response.status,
+    );
+  }
+
+  return (await response.json()) as WorkflowDetail;
 }
 
 export async function getRun(

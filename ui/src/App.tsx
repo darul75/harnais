@@ -30,6 +30,8 @@ import type {
   Workflow,
 } from "./types";
 
+import { WorkflowView } from "./WorkflowView";
+
 type GraphLayoutNode = {
   id: string;
   x: number;
@@ -62,8 +64,8 @@ function App() {
   const [task, setTask] = useState("");
   const [starting, setStarting] = useState(false);
 
-  const { runId, selectRun, clearRun } =
-    useRunRoute();
+  const { runId, workflowId, selectRun, selectWorkflow, clear } =
+    useRoute();
 
   const [run, setRun] =
     useState<Run | null>(null);
@@ -91,10 +93,6 @@ function App() {
 
   const [workflows, setWorkflows] =
     useState<Workflow[]>([]);
-
-  // null = auto-select based on the request.
-  const [selectedWorkflowId, setSelectedWorkflowId] =
-    useState<string | null>(null);
 
   // ------------------------------------------------------------
   // Load workflows
@@ -202,7 +200,7 @@ function App() {
         err instanceof ApiError &&
         err.status === 404
       ) {
-        clearRun();
+        clear();
 
         setError(
           `Run not found: ${id}`,
@@ -236,7 +234,7 @@ function App() {
       const result =
         await createRun(
           value,
-          selectedWorkflowId ?? undefined,
+          workflowId ?? undefined,
         );
 
       switchRun(
@@ -280,7 +278,7 @@ function App() {
     setSelectedExecutionId(null);
     setSelectedEventId(null);
     setError(null);
-    clearRun();
+    clear();
   }
 
   // ------------------------------------------------------------
@@ -602,14 +600,12 @@ function App() {
               <button
                 type="button"
                 className={`workflow-row ${
-                  selectedWorkflowId === null
+                  workflowId === null
                     ? "workflow-selected"
                     : ""
                 }`}
                 onClick={() =>
-                  setSelectedWorkflowId(
-                    null,
-                  )
+                  clear()
                 }
               >
                 <span className="workflow-title">
@@ -627,13 +623,13 @@ function App() {
                     key={workflow.id}
                     type="button"
                     className={`workflow-row ${
-                      selectedWorkflowId ===
+                      workflowId ===
                       workflow.id
                         ? "workflow-selected"
                         : ""
                     }`}
                     onClick={() =>
-                      setSelectedWorkflowId(
+                      selectWorkflow(
                         workflow.id,
                       )
                     }
@@ -664,10 +660,22 @@ function App() {
 
         <main className="flex-1 min-w-0">
           {/* ================================================= */}
+          {/* Workflow page */}
+          {/* ================================================= */}
+
+          {!run && workflowId && (
+            <WorkflowView
+              workflowId={workflowId}
+              onRunStarted={switchRun}
+              onRunComplete={refreshRuns}
+            />
+          )}
+
+          {/* ================================================= */}
           {/* Initial screen */}
           {/* ================================================= */}
 
-          {!run && (
+          {!run && !workflowId && (
             <section className="panel start-panel">
               <h2>
                 Start a coding workflow
@@ -1137,12 +1145,24 @@ function App() {
 }
 
 // ============================================================
-// Run route (hash-based URL navigation)
+// Route (hash-based URL navigation)
 // ============================================================
 
-function parseRunId(hash: string): string | null {
+type Route = {
+  runId: string | null;
+  workflowId: string | null;
+};
+
+const EMPTY_ROUTE: Route = {
+  runId: null,
+  workflowId: null,
+};
+
+function parseHashSegment(
+  hash: string,
+): string | null {
   const match =
-    hash.match(/^#\/runs\/([^/]+)$/);
+    hash.match(/\/([^/]+)$/);
 
   if (!match) {
     return null;
@@ -1157,23 +1177,63 @@ function parseRunId(hash: string): string | null {
   }
 }
 
+function parseRoute(
+  hash: string,
+): Route {
+  if (
+    hash.startsWith(
+      "#/runs/",
+    )
+  ) {
+    return {
+      runId:
+        parseHashSegment(
+          hash,
+        ),
+
+      workflowId: null,
+    };
+  }
+
+  if (
+    hash.startsWith(
+      "#/workflows/",
+    )
+  ) {
+    return {
+      runId: null,
+
+      workflowId:
+        parseHashSegment(
+          hash,
+        ),
+    };
+  }
+
+  return EMPTY_ROUTE;
+}
+
 function runHash(id: string): string {
   return `#/runs/${encodeURIComponent(id)}`;
 }
 
-function useRunRoute() {
-  const [runId, setRunId] =
-    useState<string | null>(
+function workflowHash(id: string): string {
+  return `#/workflows/${encodeURIComponent(id)}`;
+}
+
+function useRoute() {
+  const [route, setRoute] =
+    useState<Route>(
       () =>
-        parseRunId(
+        parseRoute(
           window.location.hash,
         ),
     );
 
   useEffect(() => {
     function syncFromURL() {
-      setRunId(
-        parseRunId(
+      setRoute(
+        parseRoute(
           window.location.hash,
         ),
       );
@@ -1202,26 +1262,44 @@ function useRunRoute() {
     };
   }, []);
 
-  const selectRun =
-    useCallback((id: string) => {
-      const url =
-        runHash(id);
+  const push =
+    useCallback(
+      (url: string) => {
+        if (
+          window.location.hash !==
+          url
+        ) {
+          window.history.pushState(
+            null,
+            "",
+            url,
+          );
+        }
 
-      if (
-        window.location.hash !==
-        url
-      ) {
-        window.history.pushState(
-          null,
-          "",
-          url,
+        setRoute(
+          parseRoute(url),
         );
-      }
+      },
+      [],
+    );
 
-      setRunId(id);
-    }, []);
+  const selectRun =
+    useCallback(
+      (id: string) =>
+        push(runHash(id)),
+      [push],
+    );
 
-  const clearRun =
+  const selectWorkflow =
+    useCallback(
+      (id: string) =>
+        push(
+          workflowHash(id),
+        ),
+      [push],
+    );
+
+  const clear =
     useCallback(() => {
       const url =
         window.location.pathname +
@@ -1238,13 +1316,20 @@ function useRunRoute() {
         );
       }
 
-      setRunId(null);
+      setRoute(EMPTY_ROUTE);
     }, []);
 
   return {
-    runId,
+    runId: route.runId,
+
+    workflowId:
+      route.workflowId,
+
     selectRun,
-    clearRun,
+
+    selectWorkflow,
+
+    clear,
   };
 }
 
