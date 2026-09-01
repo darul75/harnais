@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 :root {
   font-family:
     Inter,
@@ -63,6 +65,46 @@ button {
   justify-content: flex-end;
 
   margin-bottom: 16px;
+}
+
+.start-form {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  gap: 10px;
+
+  margin-top: 24px;
+}
+
+.task-input {
+  width: 100%;
+
+  max-width: 460px;
+
+  padding: 10px 14px;
+
+  border: 1px solid #4b5563;
+
+  border-radius: 7px;
+
+  color: #f9fafb;
+
+  background: #111827;
+
+  font: inherit;
+
+  font-size: 13px;
+}
+
+.task-input::placeholder {
+  color: #6b7280;
+}
+
+.task-input:focus {
+  outline: none;
+
+  border-color: #60a5fa;
 }
 
 button {

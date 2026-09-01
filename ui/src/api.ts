@@ -1,177 +1,71 @@
-import type {
-  AgentExecution,
-  GraphDefinition,
-  LLMCall,
-  NodeExecution,
-  Run,
-  ToolCall,
-  WorkflowState,
-} from "./types";
-
-const API =
-  "http://localhost:8080/api";
-
-async function get<T>(
-  url: string,
-): Promise<T> {
-
-  const response =
-    await fetch(url);
-
-  if (!response.ok) {
-    throw new Error(
-      `HTTP ${response.status}: ${response.statusText}`,
-    );
-  }
-
-  return response.json();
-}
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://localhost:8080";
 
 export async function createRun(
-  state: Record<string, unknown> = {},
-): Promise<{ runId: string }> {
-
-  const response =
-    await fetch(
-      `${API}/runs`,
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-
-        body: JSON.stringify({
-          state,
-        }),
+  task: string,
+) {
+  const response = await fetch(
+    `${API_BASE}/api/runs`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        task,
+      }),
+    },
+  );
 
   if (!response.ok) {
     throw new Error(
-      `HTTP ${response.status}: ${response.statusText}`,
+      await response.text(),
+    );
+  }
+
+  return (await response.json()) as {
+    runId: string;
+    task: string;
+  };
+}
+
+export async function getRun(
+  runId: string,
+) {
+  const response = await fetch(
+    `${API_BASE}/api/runs/${encodeURIComponent(runId)}`,
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await response.text(),
     );
   }
 
   return response.json();
 }
 
-export function getRun(
+export async function getRunTree(
   runId: string,
-): Promise<Run> {
-
-  return get<Run>(
-    `${API}/runs/${runId}`,
+) {
+  const response = await fetch(
+    `${API_BASE}/api/runs/${encodeURIComponent(runId)}/tree`,
   );
-}
 
-export function getGraph(
-  runId: string,
-): Promise<GraphDefinition> {
-
-  return get<GraphDefinition>(
-    `${API}/runs/${runId}/graph`,
-  );
-}
-
-export function getState(
-  runId: string,
-): Promise<WorkflowState> {
-
-  return get<WorkflowState>(
-    `${API}/runs/${runId}/state`,
-  );
-}
-
-export function getExecutions(
-  runId: string,
-): Promise<NodeExecution[]> {
-
-  return get<NodeExecution[]>(
-    `${API}/runs/${runId}/executions`,
-  );
-}
-
-export function getAgentExecutions(
-  runId: string,
-): Promise<AgentExecution[]> {
-
-  return get<AgentExecution[]>(
-    `${API}/runs/${runId}/agent-executions`,
-  );
-}
-
-export function getLLMCalls(
-  runId: string,
-): Promise<LLMCall[]> {
-
-  return get<LLMCall[]>(
-    `${API}/runs/${runId}/llm-calls`,
-  );
-}
-
-export function getToolCalls(
-  runId: string,
-): Promise<ToolCall[]> {
-
-  return get<ToolCall[]>(
-    `${API}/runs/${runId}/tool-calls`,
-  );
-}
-
-export function subscribeToEvents(
-  runId: string,
-  onEvent: (
-    event: MessageEvent,
-  ) => void,
-  onError?: (
-    event: Event,
-  ) => void,
-): EventSource {
-
-  const source =
-    new EventSource(
-      `${API}/runs/${runId}/events`,
-    );
-
-  const eventTypes = [
-    "run.started",
-    "run.completed",
-    "run.failed",
-
-    "node.started",
-    "node.completed",
-    "node.failed",
-
-    "edge.activated",
-
-    "worker.started",
-    "worker.completed",
-    "worker.failed",
-
-    "agent.started",
-    "agent.completed",
-
-    "llm.started",
-    "llm.completed",
-
-    "tool.started",
-    "tool.completed",
-    "tool.failed",
-  ];
-
-  for (const eventType of eventTypes) {
-
-    source.addEventListener(
-      eventType,
-      onEvent,
+  if (!response.ok) {
+    throw new Error(
+      await response.text(),
     );
   }
 
-  if (onError) {
-    source.onerror = onError;
-  }
+  return response.json();
+}
 
-  return source;
+export function createEventSource(
+  runId: string,
+) {
+  return new EventSource(
+    `${API_BASE}/api/runs/${encodeURIComponent(runId)}/events`,
+  );
 }

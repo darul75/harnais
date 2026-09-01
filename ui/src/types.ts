@@ -10,147 +10,115 @@ export type NodeStatus =
   | "completed"
   | "failed";
 
-export interface Run {
+export type AgentActivityKind =
+  | "llm"
+  | "tool";
+
+export type Run = {
   id: string;
+  task?: string;
   status: RunStatus;
   startedAt: string;
-  completedAt?: string | null;
-}
+  completedAt?: string;
+  state?: Record<string, unknown>;
+};
 
-export interface GraphNode {
-  id: string;
-}
-
-export interface GraphEdge {
-  id: string;
-  from: string;
-  to: string;
-}
-
-export interface GraphDefinition {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-}
-
-export interface NodeExecution {
+export type ExecutionNode = {
   id: string;
   nodeId: string;
   workerId: string;
   attempt: number;
   status: NodeStatus;
+  triggeredBy?: string[];
+  agent?: AgentExecution;
+};
 
-  input: Record<string, unknown>;
-  output: Record<string, unknown>;
+export type ExecutionEdge = {
+  id: string;
+  fromExecutionId: string;
+  toExecutionId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  edgeId: string;
+};
 
-  error?: string;
-
+export type AgentActivity = {
+  id: string;
+  agentExecutionId: string;
+  sequence: number;
+  kind: AgentActivityKind;
+  llmCallId?: string;
+  toolCallId?: string;
   startedAt: string;
-  completedAt?: string | null;
+  completedAt?: string;
+  status: NodeStatus;
+};
 
-  triggeredBy: string[];
-}
+export type MessageRecord = {
+  role: string;
+  content: string;
+};
 
-export interface AgentExecution {
+export type LLMCall = {
+  id: string;
+  agentExecutionId: string;
+  activityId: string;
+  sequence: number;
+  status: NodeStatus;
+  messages?: MessageRecord[];
+  response?: string;
+  requestedTool?: string;
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+};
+
+export type ToolCall = {
+  id: string;
+  agentExecutionId: string;
+  activityId: string;
+  sequence: number;
+  toolId: string;
+  status: NodeStatus;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+};
+
+export type AgentExecution = {
   id: string;
   nodeExecutionId: string;
   agentId: string;
-
   status: NodeStatus;
-
   startedAt: string;
-  completedAt?: string | null;
-
+  completedAt?: string;
   error?: string;
-}
+  activities: AgentActivity[];
+  llmCalls?: LLMCall[];
+  toolCalls?: ToolCall[];
+};
 
-export interface MessageRecord {
-  role: string;
-  content: string;
-}
-
-export interface LLMCall {
-  id: string;
-
-  agentExecutionId: string;
-
-  sequence: number;
-
-  status: NodeStatus;
-
-  messages: MessageRecord[];
-
-  response?: string;
-
-  requestedTool?: string;
-
+export type RunTree = {
+  runId: string;
+  status: RunStatus;
   startedAt: string;
+  completedAt?: string;
+  nodes: ExecutionNode[];
+  edges: ExecutionEdge[];
+};
 
-  completedAt?: string | null;
-
-  error?: string;
-}
-
-export interface ToolCall {
-  id: string;
-
-  agentExecutionId: string;
-
-  sequence: number;
-
-  toolId: string;
-
-  status: NodeStatus;
-
-  input: Record<string, unknown>;
-
-  output: Record<string, unknown>;
-
-  startedAt: string;
-
-  completedAt?: string | null;
-
-  error?: string;
-}
-
-export interface EdgeActivation {
-  id: string;
-
-  edgeId: string;
-
-  fromExecutionId: string;
-
-  fromNodeId: string;
-
-  toNodeId: string;
-
-  createdAt: string;
-
-  toExecutionId?: string | null;
-
-  consumedAt?: string | null;
-}
-
-export interface GraphEvent {
-  id: number;
+export type RuntimeEvent = {
+  id?: number;
   time: string;
-
   runID: string;
-
   type: string;
-
   nodeID?: string;
   executionID?: string;
-
   workerID?: string;
   agentID?: string;
   toolID?: string;
-
-  activationID?: string;
-
   message?: string;
-
   data?: Record<string, unknown>;
-}
-
-export type WorkflowState =
-  Record<string, unknown>;
+};
