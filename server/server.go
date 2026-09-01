@@ -9,9 +9,23 @@ import (
 	"harnais/graph"
 )
 
+type StartRunRequest struct {
+	Task string
+
+	WorkflowID string
+}
+
 type StartRunFunc func(
-	initial graph.State,
+	request StartRunRequest,
 ) *graph.Run
+
+type WorkflowInfo struct {
+	ID string `json:"id"`
+
+	Title string `json:"title"`
+
+	Description string `json:"description"`
+}
 
 type Server struct {
 	Bus *EventBus
@@ -19,12 +33,15 @@ type Server struct {
 	Runs *RunManager
 
 	StartRun StartRunFunc
+
+	Workflows func() []WorkflowInfo
 }
 
 func NewServer(
 	bus *EventBus,
 	runs *RunManager,
 	startRun StartRunFunc,
+	workflows func() []WorkflowInfo,
 ) *Server {
 	return &Server{
 		Bus: bus,
@@ -32,6 +49,8 @@ func NewServer(
 		Runs: runs,
 
 		StartRun: startRun,
+
+		Workflows: workflows,
 	}
 }
 
@@ -42,6 +61,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(
 		"POST /api/runs",
 		s.createRun,
+	)
+
+	mux.HandleFunc(
+		"GET /api/workflows",
+		s.getWorkflows,
 	)
 
 	mux.HandleFunc(
@@ -109,7 +133,8 @@ func (s *Server) createRun(
 	r *http.Request,
 ) {
 	var request struct {
-		Task string `json:"task"`
+		Task       string `json:"task"`
+		WorkflowID string `json:"workflowId"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -122,8 +147,9 @@ func (s *Server) createRun(
 	}
 
 	fmt.Printf(
-		"[HTTP] create run task=%q\n",
+		"[HTTP] create run task=%q workflow=%q\n",
 		request.Task,
+		request.WorkflowID,
 	)
 
 	if request.Task == "" {
@@ -136,8 +162,9 @@ func (s *Server) createRun(
 	}
 
 	run := s.StartRun(
-		graph.State{
-			"task": request.Task,
+		StartRunRequest{
+			Task:       request.Task,
+			WorkflowID: request.WorkflowID,
 		},
 	)
 
@@ -147,6 +174,30 @@ func (s *Server) createRun(
 			"runId": run.ID,
 			"task":  request.Task,
 		},
+	)
+}
+
+// ------------------------------------------------------------
+// Workflows
+// ------------------------------------------------------------
+
+func (s *Server) getWorkflows(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	if s.Workflows == nil {
+		http.Error(
+			w,
+			"workflows not configured",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	writeJSON(
+		w,
+		s.Workflows(),
 	)
 }
 

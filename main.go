@@ -6,13 +6,12 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
 
-	"harnais/agent"
 	"harnais/graph"
 	"harnais/llm"
 	"harnais/server"
 	"harnais/tools"
+	"harnais/workflows"
 )
 
 func main() {
@@ -28,11 +27,36 @@ func main() {
 		server.NewRunManager()
 
 	// ============================================================
-	// Graph
+	// Workflows
 	// ============================================================
 
-	g :=
-		buildGraph()
+	workspaceRoot :=
+		os.Getenv("HARNAIS_WORKSPACE")
+
+	if workspaceRoot == "" {
+		workspaceRoot =
+			"./workspace"
+	}
+
+	workspace :=
+		tools.NewWorkspace(
+			workspaceRoot,
+		)
+
+	registry, err :=
+		workflows.Register(
+			workspace,
+		)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	selector :=
+		workflows.NewSelector(
+			registry,
+			llm.NewOpenAI("", ""),
+		)
 
 	// ============================================================
 	// Executor
@@ -83,13 +107,66 @@ func main() {
 
 			runManager,
 
-			func(initial graph.State) *graph.Run {
+			func(request server.StartRunRequest) *graph.Run {
+
+				workflow, err :=
+					selector.Select(
+						context.Background(),
+						request.Task,
+						request.WorkflowID,
+					)
+
+				if err != nil {
+					workflow =
+						registry.Default()
+				}
+
+				fmt.Println(
+					"[workflow] selected:",
+					workflow.ID,
+					"-",
+					workflow.Title,
+				)
+
+				g :=
+					workflow.Build()
 
 				return executor.Start(
 					context.Background(),
 					g,
-					initial,
+					graph.State{
+						"task": request.Task,
+					},
 				)
+			},
+
+			func() []server.WorkflowInfo {
+
+				all :=
+					registry.All()
+
+				info := make(
+					[]server.WorkflowInfo,
+					0,
+					len(all),
+				)
+
+				for _, workflow := range all {
+
+					info =
+						append(
+							info,
+							server.WorkflowInfo{
+								ID: workflow.ID,
+
+								Title: workflow.Title,
+
+								Description: workflow.Description,
+							},
+						)
+				}
+
+				return info
 			},
 		)
 
@@ -130,391 +207,6 @@ func main() {
 
 		log.Fatal(err)
 	}
-}
-
-// ============================================================
-// Graph
-// ============================================================
-
-func buildGraph() *graph.Graph {
-
-	g :=
-		graph.NewGraph()
-
-	// ============================================================
-	// Workspace
-	// ============================================================
-
-	workspaceRoot :=
-		os.Getenv("HARNAIS_WORKSPACE")
-
-	if workspaceRoot == "" {
-		workspaceRoot =
-			"./workspace"
-	}
-
-	workspace :=
-		tools.NewWorkspace(
-			workspaceRoot,
-		)
-
-	// ============================================================
-	// Planner
-	// ============================================================
-
-	planner :=
-		graph.NewFuncWorker(
-			"planner",
-
-			func(
-				ctx context.Context,
-				state graph.State,
-			) (graph.State, error) {
-
-				task, ok :=
-					state["task"].(string)
-
-				if !ok || task == "" {
-					return nil, fmt.Errorf(
-						"planner: task is missing",
-					)
-				}
-
-				fmt.Println(
-					"[planner] Task:",
-					task,
-				)
-
-				time.Sleep(
-					1 * time.Second,
-				)
-
-				return graph.State{
-					"plan": task,
-				}, nil
-			},
-		)
-
-	must(
-		g.AddNode(
-			&graph.Node{
-				ID: "planner",
-
-				Worker: planner,
-			},
-		),
-	)
-
-	// ============================================================
-	// Coder agent
-	// ============================================================
-
-	coderTools :=
-		agent.NewToolRegistry(
-
-			tools.ListFiles{
-				Workspace: workspace,
-			},
-
-			tools.ReadFile{
-				Workspace: workspace,
-			},
-
-			tools.WriteFile{
-				Workspace: workspace,
-			},
-
-			tools.RunCommand{
-				Workspace: workspace,
-			},
-
-			tools.GitDiff{
-				Workspace: workspace,
-			},
-		)
-
-	coder :=
-		&agent.LoopAgent{
-
-			AgentID: "coder-agent",
-
-			Prompt: `You are an autonomous coding agent working inside the provided workspace.
-
-A user request and workflow state are provided at runtime.
-
-Your job is to implement the user's requested change.
-
-First inspect the workspace with list_files.
-Do not assume a project type or specific files.
-Read the relevant existing code before changing anything.
-
-Implement only the requested change.
-Run appropriate tests.
-Inspect the final diff when available.
-
-Work only inside the workspace.
-Do not access the harness source code.
-Do not fabricate tool results or test results.`,
-
-			LLMFactory: func() agent.LLM {
-				return llm.NewOpenAI("", "")
-			},
-
-			ToolRegistry: coderTools,
-		}
-
-	must(
-		g.AddNode(
-			&graph.Node{
-				ID: "coder",
-
-				Worker: coder,
-			},
-		),
-	)
-
-	// ============================================================
-	// Security agent
-	// ============================================================
-
-	securityTools :=
-		agent.NewToolRegistry(
-
-			tools.ListFiles{
-				Workspace: workspace,
-			},
-
-			tools.ReadFile{
-				Workspace: workspace,
-			},
-
-			tools.GitDiff{
-				Workspace: workspace,
-			},
-		)
-
-	security :=
-		&agent.LoopAgent{
-
-			AgentID: "security-agent",
-
-			Prompt: `You are a security review agent working inside the provided workspace.
-
-A user request and workflow state are provided at runtime.
-
-Review the implementation related to the user's request for security issues.
-
-First inspect the workspace with list_files.
-Do not assume a project type or specific files.
-Read the relevant implementation before reaching conclusions.
-
-Do not modify files.
-Use git_diff when useful.
-
-Report concrete security findings with affected files and reasoning.
-If there are no significant issues, say so explicitly.
-
-Work only inside the workspace.
-Do not fabricate findings or tool results.`,
-
-			LLMFactory: func() agent.LLM {
-
-				return llm.NewOpenAI("", "")
-			},
-
-			ToolRegistry: securityTools,
-		}
-
-	must(
-		g.AddNode(
-			&graph.Node{
-				ID: "security",
-
-				Worker: security,
-			},
-		),
-	)
-
-	// ============================================================
-	// Tester
-	// ============================================================
-
-	tester :=
-		graph.NewFuncWorker(
-			"tester",
-
-			func(
-				ctx context.Context,
-				state graph.State,
-			) (graph.State, error) {
-
-				attempt :=
-					0
-
-				if value, ok :=
-					state["test_attempts"]; ok {
-
-					attempt =
-						value.(int)
-				}
-
-				attempt++
-
-				fmt.Printf(
-					"[tester] Running tests, attempt %d...\n",
-					attempt,
-				)
-
-				time.Sleep(
-					1 * time.Second,
-				)
-
-				passed :=
-					attempt >= 2
-
-				if passed {
-
-					fmt.Println(
-						"[tester] PASS",
-					)
-
-				} else {
-
-					fmt.Println(
-						"[tester] FAIL",
-					)
-				}
-
-				return graph.State{
-					"tests_passed": passed,
-
-					"test_attempts": attempt,
-				}, nil
-			},
-		)
-
-	must(
-		g.AddNode(
-			&graph.Node{
-				ID: "tester",
-
-				Worker: tester,
-			},
-		),
-	)
-
-	// ============================================================
-	// Reviewer
-	// ============================================================
-
-	reviewer :=
-		graph.NewFuncWorker(
-			"reviewer",
-
-			func(
-				ctx context.Context,
-				state graph.State,
-			) (graph.State, error) {
-
-				fmt.Println(
-					"[reviewer] Reviewing all results...",
-				)
-
-				time.Sleep(
-					1 * time.Second,
-				)
-
-				fmt.Println(
-					"[reviewer] APPROVED",
-				)
-
-				return graph.State{
-					"approved": true,
-				}, nil
-			},
-		)
-
-	must(
-		g.AddNode(
-			&graph.Node{
-				ID: "reviewer",
-
-				Worker: reviewer,
-
-				JoinAll: true,
-			},
-		),
-	)
-
-	// ============================================================
-	// Edges
-	// ============================================================
-
-	// planner -> coder
-	must(
-		g.AddEdge(
-			"planner",
-			"coder",
-		),
-	)
-
-	// planner -> security
-	must(
-		g.AddEdge(
-			"planner",
-			"security",
-		),
-	)
-
-	// coder -> tester
-	must(
-		g.AddEdge(
-			"coder",
-			"tester",
-		),
-	)
-
-	// tester -> coder when tests fail
-	must(
-		g.AddConditionalEdge(
-			"tester",
-			"coder",
-
-			func(state graph.State) bool {
-
-				passed, _ :=
-					state["tests_passed"].(bool)
-
-				return !passed
-			},
-		),
-	)
-
-	// tester -> reviewer when tests pass
-	must(
-		g.AddConditionalEdge(
-			"tester",
-			"reviewer",
-
-			func(state graph.State) bool {
-
-				passed, _ :=
-					state["tests_passed"].(bool)
-
-				return passed
-			},
-		),
-	)
-
-	// security -> reviewer
-	must(
-		g.AddEdge(
-			"security",
-			"reviewer",
-		),
-	)
-
-	return g
 }
 
 // ============================================================

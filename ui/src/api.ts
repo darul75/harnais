@@ -1,9 +1,12 @@
+import type { Workflow } from "./types";
+
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
   "http://localhost:8080";
 
 export async function createRun(
   task: string,
+  workflowId?: string,
 ) {
   const response = await fetch(
     `${API_BASE}/api/runs`,
@@ -14,6 +17,7 @@ export async function createRun(
       },
       body: JSON.stringify({
         task,
+        workflowId,
       }),
     },
   );
@@ -28,6 +32,20 @@ export async function createRun(
     runId: string;
     task: string;
   };
+}
+
+export async function getWorkflows() {
+  const response = await fetch(
+    `${API_BASE}/api/workflows`,
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await response.text(),
+    );
+  }
+
+  return (await response.json()) as Workflow[];
 }
 
 export async function getRun(

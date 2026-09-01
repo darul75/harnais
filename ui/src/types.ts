@@ -23,6 +23,12 @@ export type Run = {
   state?: Record<string, unknown>;
 };
 
+export type Workflow = {
+  id: string;
+  title: string;
+  description: string;
+};
+
 export type ExecutionNode = {
   id: string;
   nodeId: string;

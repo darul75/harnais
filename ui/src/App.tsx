@@ -10,6 +10,7 @@ import {
   createRun,
   getRun,
   getRunTree,
+  getWorkflows,
 } from "./api";
 
 import type {
@@ -22,6 +23,7 @@ import type {
   RunTree,
   RuntimeEvent,
   ToolCall,
+  Workflow,
 } from "./types";
 
 type GraphLayoutNode = {
@@ -79,6 +81,39 @@ function App() {
 
   const [loading, setLoading] =
     useState(false);
+
+  const [workflows, setWorkflows] =
+    useState<Workflow[]>([]);
+
+  // null = auto-select based on the request.
+  const [selectedWorkflowId, setSelectedWorkflowId] =
+    useState<string | null>(null);
+
+  // ------------------------------------------------------------
+  // Load workflows
+  // ------------------------------------------------------------
+
+  useEffect(() => {
+    let disposed = false;
+
+    getWorkflows()
+      .then((list) => {
+        if (disposed) {
+          return;
+        }
+        setWorkflows(list);
+      })
+      .catch((err) => {
+        console.error(
+          "Failed to load workflows",
+          err,
+        );
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   // ------------------------------------------------------------
   // Load run
@@ -159,7 +194,10 @@ function App() {
       setError(null);
 
       const result =
-        await createRun(value);
+        await createRun(
+          value,
+          selectedWorkflowId ?? undefined,
+        );
 
       setRunId(
         result.runId,
@@ -364,19 +402,77 @@ function App() {
 
       <div className="flex gap-5 items-start">
         {/* =================================================== */}
-        {/* Sidebar (future runs list) */}
+        {/* Sidebar: workflow selection */}
         {/* =================================================== */}
 
-        <aside className="w-60 shrink-0">
+        <aside className="w-64 shrink-0">
           <div className="panel">
             <div className="panel-header">
               <h2>
-                Runs
+                Workflows
               </h2>
+
+              <span>
+                {workflows.length}
+              </span>
             </div>
 
-            <div className="empty">
-              No runs yet
+            <div className="workflow-list">
+              <button
+                type="button"
+                className={`workflow-row ${
+                  selectedWorkflowId === null
+                    ? "workflow-selected"
+                    : ""
+                }`}
+                onClick={() =>
+                  setSelectedWorkflowId(
+                    null,
+                  )
+                }
+              >
+                <span className="workflow-title">
+                  Auto
+                </span>
+
+                <span className="workflow-desc">
+                  Choose automatically from the request
+                </span>
+              </button>
+
+              {workflows.map(
+                (workflow) => (
+                  <button
+                    key={workflow.id}
+                    type="button"
+                    className={`workflow-row ${
+                      selectedWorkflowId ===
+                      workflow.id
+                        ? "workflow-selected"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      setSelectedWorkflowId(
+                        workflow.id,
+                      )
+                    }
+                  >
+                    <span className="workflow-title">
+                      {workflow.title}
+                    </span>
+
+                    <span className="workflow-desc">
+                      {workflow.description}
+                    </span>
+                  </button>
+                ),
+              )}
+
+              {!workflows.length && (
+                <div className="empty">
+                  No workflows available
+                </div>
+              )}
             </div>
           </div>
         </aside>
