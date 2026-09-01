@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"harnais/config"
 	"harnais/graph"
 )
 
@@ -69,6 +70,8 @@ type Server struct {
 
 	Runs *RunManager
 
+	Settings *config.Store
+
 	StartRun StartRunFunc
 
 	Workflows func() []WorkflowInfo
@@ -79,6 +82,7 @@ type Server struct {
 func NewServer(
 	bus *EventBus,
 	runs *RunManager,
+	settings *config.Store,
 	startRun StartRunFunc,
 	workflows func() []WorkflowInfo,
 	getWorkflow func(id string) (*WorkflowDetail, bool),
@@ -87,6 +91,8 @@ func NewServer(
 		Bus: bus,
 
 		Runs: runs,
+
+		Settings: settings,
 
 		StartRun: startRun,
 
@@ -118,6 +124,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(
 		"GET /api/workflows/{workflowID}",
 		s.getWorkflow,
+	)
+
+	mux.HandleFunc(
+		"GET /api/settings",
+		s.getSettings,
+	)
+
+	mux.HandleFunc(
+		"PUT /api/settings",
+		s.updateSettings,
+	)
+
+	mux.HandleFunc(
+		"POST /api/settings/test",
+		s.testSettings,
 	)
 
 	mux.HandleFunc(
@@ -293,8 +314,120 @@ func (s *Server) getWorkflow(
 }
 
 // ------------------------------------------------------------
-// Run
+// Settings
 // ------------------------------------------------------------
+
+func (s *Server) getSettings(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	if s.Settings == nil {
+		http.Error(
+			w,
+			"settings not configured",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	writeJSON(
+		w,
+		s.Settings.View(),
+	)
+}
+
+func (s *Server) updateSettings(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	if s.Settings == nil {
+		http.Error(
+			w,
+			"settings not configured",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	var update config.SettingsUpdate
+
+	if err :=
+		json.NewDecoder(
+			r.Body,
+		).Decode(
+			&update,
+		); err != nil {
+
+		http.Error(
+			w,
+			"invalid JSON",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	if err :=
+		s.Settings.Update(update); err != nil {
+
+		http.Error(
+			w,
+			err.Error(),
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	writeJSON(
+		w,
+		s.Settings.View(),
+	)
+}
+
+func (s *Server) testSettings(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	var request config.TestRequest
+
+	if err :=
+		json.NewDecoder(
+			r.Body,
+		).Decode(
+			&request,
+		); err != nil {
+
+		http.Error(
+			w,
+			"invalid JSON",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	result :=
+		config.TestResult{
+			OK: true,
+		}
+
+	if err :=
+		config.Test(
+			request.Provider,
+			request.Values,
+		); err != nil {
+
+		result.OK = false
+		result.Message =
+			err.Error()
+	}
+
+	writeJSON(
+		w,
+		result,
+	)
+}
 
 type runSummary struct {
 	ID string `json:"id"`
@@ -854,7 +987,7 @@ func withCORS(
 
 			w.Header().Set(
 				"Access-Control-Allow-Methods",
-				"GET, POST, OPTIONS",
+				"GET, POST, PUT, OPTIONS",
 			)
 
 			if r.Method ==

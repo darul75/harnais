@@ -65,6 +65,86 @@ func (o *OpenAI) Validate() error {
 	return nil
 }
 
+// TestOpenAI validates an API key (and optionally a model) by
+// listing the account models. It does not generate any tokens.
+func TestOpenAI(
+	apiKey string,
+	model string,
+) error {
+
+	if apiKey == "" {
+		return fmt.Errorf(
+			"API key is missing",
+		)
+	}
+
+	req, err :=
+		http.NewRequest(
+			http.MethodGet,
+			"https://api.openai.com/v1/models",
+			nil,
+		)
+
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set(
+		"Authorization",
+		"Bearer "+apiKey,
+	)
+
+	resp, err :=
+		http.DefaultClient.Do(req)
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 ||
+		resp.StatusCode >= 300 {
+
+		return fmt.Errorf(
+			"openai API returned %s",
+			resp.Status,
+		)
+	}
+
+	var list struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+
+	if err :=
+		json.NewDecoder(
+			resp.Body,
+		).Decode(
+			&list,
+		); err != nil {
+
+		return nil
+	}
+
+	if model == "" {
+		return nil
+	}
+
+	for _, item := range list.Data {
+
+		if item.ID == model {
+			return nil
+		}
+	}
+
+	return fmt.Errorf(
+		"model %q not found in your account",
+		model,
+	)
+}
+
 // ------------------------------------------------------------
 // Responses API request
 // ------------------------------------------------------------

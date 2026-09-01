@@ -169,3 +169,33 @@ export type RuntimeEvent = {
   message?: string;
   data?: Record<string, unknown>;
 };
+
+export type SettingsFieldType =
+  | "secret"
+  | "string";
+
+export type SettingsField = {
+  key: string;
+  label: string;
+  type: SettingsFieldType;
+  placeholder?: string;
+  envVar?: string;
+  secret?: boolean;
+};
+
+export type ProviderSettings = {
+  id: string;
+  label: string;
+  fields: SettingsField[];
+  values: Record<string, string>;
+  configured: boolean;
+};
+
+export type Settings = {
+  providers: ProviderSettings[];
+};
+
+export type SettingsTestResult = {
+  ok: boolean;
+  message?: string;
+};

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"harnais/agent"
+	"harnais/config"
 	"harnais/graph"
-	"harnais/llm"
 	"harnais/tools"
 )
 
@@ -15,15 +15,29 @@ import (
 // can compose distinct graphs from common components.
 type Shared struct {
 	workspace *tools.Workspace
+
+	store *config.Store
 }
 
 func NewShared(
 	workspace *tools.Workspace,
+	store *config.Store,
 ) *Shared {
 
 	return &Shared{
 		workspace: workspace,
+		store:     store,
 	}
+}
+
+// LLMFactory returns a factory that builds an LLM from the
+// current settings store. It is evaluated when a run starts,
+// so updated settings apply without a restart.
+func (s *Shared) LLMFactory(
+	kind string,
+) func() agent.LLM {
+
+	return s.store.LLMFactory(kind)
 }
 
 // ------------------------------------------------------------
@@ -102,9 +116,9 @@ func (s *Shared) Coder(
 
 		Prompt: prompt,
 
-		LLMFactory: func() agent.LLM {
-			return llm.NewOpenAI("", "")
-		},
+		LLMFactory: s.LLMFactory(
+			"openai",
+		),
 
 		ToolRegistry: toolRegistry,
 	}
@@ -139,9 +153,9 @@ func (s *Shared) Security(
 
 		Prompt: prompt,
 
-		LLMFactory: func() agent.LLM {
-			return llm.NewOpenAI("", "")
-		},
+		LLMFactory: s.LLMFactory(
+			"openai",
+		),
 
 		ToolRegistry: toolRegistry,
 	}

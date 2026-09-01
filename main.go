@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"os"
 
+	"harnais/config"
 	"harnais/graph"
-	"harnais/llm"
 	"harnais/server"
 	"harnais/tools"
 	"harnais/workflows"
@@ -25,6 +25,18 @@ func main() {
 
 	runManager :=
 		server.NewRunManager()
+
+	// ============================================================
+	// Settings
+	// ============================================================
+
+	settingsPath :=
+		os.Getenv("HARNAIS_SETTINGS")
+
+	store :=
+		config.NewStore(
+			settingsPath,
+		)
 
 	// ============================================================
 	// Workflows
@@ -46,6 +58,7 @@ func main() {
 	registry, err :=
 		workflows.Register(
 			workspace,
+			store,
 		)
 
 	if err != nil {
@@ -55,7 +68,9 @@ func main() {
 	selector :=
 		workflows.NewSelector(
 			registry,
-			llm.NewOpenAI("", ""),
+			store.LLMFactory(
+				"openai",
+			),
 		)
 
 	// ============================================================
@@ -97,6 +112,8 @@ func main() {
 			eventBus,
 
 			runManager,
+
+			store,
 
 			func(request server.StartRunRequest) *graph.Run {
 

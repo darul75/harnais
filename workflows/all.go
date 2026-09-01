@@ -1,15 +1,19 @@
 package workflows
 
-import "harnais/tools"
+import (
+	"harnais/config"
+	"harnais/tools"
+)
 
 // Register builds the full registry of available workflows
-// around the provided workspace.
+// around the provided workspace and settings store.
 func Register(
 	workspace *tools.Workspace,
+	store *config.Store,
 ) (*Registry, error) {
 
 	s :=
-		NewShared(workspace)
+		NewShared(workspace, store)
 
 	return NewRegistry(
 		BasicWorkflowID,

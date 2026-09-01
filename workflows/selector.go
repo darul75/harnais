@@ -13,20 +13,23 @@ import (
 type Selector struct {
 	registry *Registry
 
-	// Optional LLM used for classification when keyword
-	// matching cannot decide. If nil, the keyword match
-	// result (or default) is used directly.
-	llm agent.LLM
+	// Optional LLM factory used for classification when keyword
+	// matching cannot decide. If nil, the keyword match result
+	// (or default) is used directly.
+	factory LLMFactory
 }
+
+// LLMFactory builds an LLM instance from the current settings.
+type LLMFactory func() agent.LLM
 
 func NewSelector(
 	registry *Registry,
-	llm agent.LLM,
+	factory LLMFactory,
 ) *Selector {
 
 	return &Selector{
 		registry: registry,
-		llm:      llm,
+		factory:  factory,
 	}
 }
 
@@ -57,10 +60,14 @@ func (s *Selector) Select(
 		return workflow, nil
 	}
 
-	if s.llm != nil {
+	if s.factory != nil {
 
 		workflow, err :=
-			s.llmMatch(ctx, task)
+			s.llmMatch(
+				ctx,
+				s.factory(),
+				task,
+			)
 
 		if err == nil && workflow != nil {
 			return workflow, nil
@@ -169,6 +176,7 @@ func (s *Selector) scoreWorkflow(
 
 func (s *Selector) llmMatch(
 	ctx context.Context,
+	llm agent.LLM,
 	task string,
 ) (*Workflow, error) {
 
@@ -212,7 +220,7 @@ func (s *Selector) llmMatch(
 	)
 
 	response, err :=
-		s.llm.Generate(
+		llm.Generate(
 			ctx,
 			[]agent.Message{
 				{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"harnais/config"
 	"harnais/tools"
 )
 
@@ -12,6 +13,7 @@ func testRegistry(t *testing.T) *Registry {
 
 	registry, err := Register(
 		tools.NewWorkspace("/tmp/harnais-test-workspace"),
+		config.NewStore(""),
 	)
 
 	if err != nil {

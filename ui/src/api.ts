@@ -1,4 +1,6 @@
 import type {
+  Settings,
+  SettingsTestResult,
   WorkflowDetail,
   RunSummary,
   Workflow,
@@ -131,4 +133,80 @@ export function createEventSource(
   return new EventSource(
     `${API_BASE}/api/runs/${encodeURIComponent(runId)}/events`,
   );
+}
+
+export async function getSettings() {
+  const response = await fetch(
+    `${API_BASE}/api/settings`,
+  );
+
+  if (!response.ok) {
+    throw new ApiError(
+      await response.text(),
+      response.status,
+    );
+  }
+
+  return (await response.json()) as Settings;
+}
+
+export async function updateSettings(
+  providers: Record<
+    string,
+    Record<string, string>
+  >,
+) {
+  const response = await fetch(
+    `${API_BASE}/api/settings`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        providers,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiError(
+      await response.text(),
+      response.status,
+    );
+  }
+
+  return (await response.json()) as Settings;
+}
+
+export async function testSettings(
+  provider: string,
+  values: Record<string, string>,
+) {
+  const response = await fetch(
+    `${API_BASE}/api/settings/test`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        provider,
+        values,
+      }),
+    },
+  );
+
+  const result =
+    (await response.json()) as SettingsTestResult;
+
+  if (!response.ok || !result.ok) {
+    throw new ApiError(
+      result.message ||
+        (await response.text()),
+      response.status,
+    );
+  }
+
+  return result;
 }

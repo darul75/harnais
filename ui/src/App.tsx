@@ -32,6 +32,7 @@ import type {
 } from "./types";
 
 import { WorkflowView } from "./WorkflowView";
+import { SettingsView } from "./SettingsView";
 
 type GraphLayoutNode = {
   id: string;
@@ -65,7 +66,7 @@ function App() {
   const [task, setTask] = useState("");
   const [starting, setStarting] = useState(false);
 
-  const { runId, workflowId, selectRun, selectWorkflow, clear } =
+  const { runId, workflowId, settings, selectRun, selectWorkflow, openSettings, clear } =
     useRoute();
 
   const [run, setRun] =
@@ -473,6 +474,20 @@ function App() {
         </div>
 
         <div className="header-actions">
+          <button
+            type="button"
+            className={`settings-button ${
+              settings
+                ? "settings-button-active"
+                : ""
+            }`}
+            onClick={openSettings}
+            aria-label="Settings"
+            title="Settings"
+          >
+            {"\u2699"}
+          </button>
+
           {runId && (
             <>
               <div className="run-nav">
@@ -661,10 +676,20 @@ function App() {
 
         <main className="flex-1 min-w-0">
           {/* ================================================= */}
+          {/* Settings page */}
+          {/* ================================================= */}
+
+          {settings && (
+            <SettingsView />
+          )}
+
+          {/* ================================================= */}
           {/* Workflow page */}
           {/* ================================================= */}
 
-          {!run && workflowId && (
+          {!settings &&
+            !run &&
+            workflowId && (
             <WorkflowView
               workflowId={workflowId}
               onRunStarted={switchRun}
@@ -676,7 +701,9 @@ function App() {
           {/* Initial screen */}
           {/* ================================================= */}
 
-          {!run && !workflowId && (
+          {!settings &&
+            !run &&
+            !workflowId && (
             <section className="panel start-panel">
               <h2>
                 Start a coding workflow
@@ -726,7 +753,7 @@ function App() {
       {/* Run */}
       {/* ======================================================= */}
 
-      {run && (
+      {!settings && run && (
         <>
           {/* --------------------------------------------------- */}
           {/* Run + Workflow side-by-side */}
@@ -1118,11 +1145,13 @@ function App() {
 type Route = {
   runId: string | null;
   workflowId: string | null;
+  settings: boolean;
 };
 
 const EMPTY_ROUTE: Route = {
   runId: null,
   workflowId: null,
+  settings: false,
 };
 
 function parseHashSegment(
@@ -1159,6 +1188,8 @@ function parseRoute(
         ),
 
       workflowId: null,
+
+      settings: false,
     };
   }
 
@@ -1174,6 +1205,22 @@ function parseRoute(
         parseHashSegment(
           hash,
         ),
+
+      settings: false,
+    };
+  }
+
+  if (
+    hash.startsWith(
+      "#/settings",
+    )
+  ) {
+    return {
+      runId: null,
+
+      workflowId: null,
+
+      settings: true,
     };
   }
 
@@ -1186,6 +1233,10 @@ function runHash(id: string): string {
 
 function workflowHash(id: string): string {
   return `#/workflows/${encodeURIComponent(id)}`;
+}
+
+function settingsHash(): string {
+  return "#/settings";
 }
 
 function useRoute() {
@@ -1266,6 +1317,12 @@ function useRoute() {
       [push],
     );
 
+  const openSettings =
+    useCallback(
+      () => push(settingsHash()),
+      [push],
+    );
+
   const clear =
     useCallback(() => {
       const url =
@@ -1292,9 +1349,13 @@ function useRoute() {
     workflowId:
       route.workflowId,
 
+    settings: route.settings,
+
     selectRun,
 
     selectWorkflow,
+
+    openSettings,
 
     clear,
   };

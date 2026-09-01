@@ -3,7 +3,6 @@ package workflows
 import (
 	"harnais/agent"
 	"harnais/graph"
-	"harnais/llm"
 )
 
 const BasicWorkflowID = "basic"
@@ -47,9 +46,9 @@ func BasicWorkflow(
 
 						Prompt: basicPrompt,
 
-						LLMFactory: func() agent.LLM {
-							return llm.NewOpenAI("", "")
-						},
+LLMFactory: s.LLMFactory(
+						"openai",
+					),
 					},
 				},
 			)

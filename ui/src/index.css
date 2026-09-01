@@ -1119,6 +1119,260 @@ pre {
   color: #fca5a5;
 }
 
+.success {
+  margin-bottom: 20px;
+
+  padding: 14px 18px;
+
+  border: 1px solid #065f46;
+
+  border-radius: 8px;
+
+  background: #022c22;
+
+  color: #6ee7b7;
+}
+
+/* --------------------------------------------------------- */
+/* Settings page */
+/* --------------------------------------------------------- */
+
+.settings-button {
+  border: 1px solid #374151;
+
+  border-radius: 7px;
+
+  padding: 6px 10px;
+
+  background: transparent;
+
+  color: #9ca3af;
+
+  font-size: 15px;
+
+  line-height: 1;
+
+  cursor: pointer;
+}
+
+.settings-button:hover {
+  border-color: #6b7280;
+
+  color: #f9fafb;
+}
+
+.settings-button-active {
+  border-color: #60a5fa;
+
+  color: #60a5fa;
+}
+
+.settings-hint {
+  margin: 16px 17px 0;
+
+  padding: 12px 14px;
+
+  border: 1px solid #78350f;
+
+  border-radius: 7px;
+
+  background: #451a03;
+
+  color: #fcd34d;
+
+  font-size: 13px;
+}
+
+.settings-providers {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 16px;
+
+  padding: 16px 17px;
+}
+
+.settings-provider {
+  border: 1px solid #374151;
+
+  border-radius: 9px;
+
+  background: #111827;
+
+  padding: 16px;
+}
+
+.settings-provider-header {
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  margin-bottom: 14px;
+}
+
+.settings-provider-header h3 {
+  margin: 0;
+
+  font-size: 15px;
+}
+
+.settings-badge {
+  padding: 3px 9px;
+
+  border-radius: 999px;
+
+  border: 1px solid #374151;
+
+  color: #9ca3af;
+
+  font-size: 11px;
+
+  text-transform: uppercase;
+
+  letter-spacing: 0.04em;
+}
+
+.settings-badge-ok {
+  border-color: #065f46;
+
+  color: #34d399;
+}
+
+.settings-fields {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 12px;
+}
+
+.settings-field {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 6px;
+}
+
+.settings-field-label {
+  color: #9ca3af;
+
+  font-size: 12px;
+
+  font-weight: 600;
+
+  text-transform: uppercase;
+
+  letter-spacing: 0.04em;
+}
+
+.settings-field-input {
+  display: flex;
+
+  gap: 8px;
+}
+
+.settings-field-input input {
+  flex: 1;
+
+  min-width: 0;
+
+  padding: 9px 11px;
+
+  border: 1px solid #374151;
+
+  border-radius: 7px;
+
+  background: #1f2937;
+
+  color: #f9fafb;
+
+  font-family: monospace;
+
+  font-size: 13px;
+}
+
+.settings-field-input input:focus {
+  outline: none;
+
+  border-color: #60a5fa;
+}
+
+.settings-field-input button {
+  padding: 8px 12px;
+
+  border: 1px solid #374151;
+
+  border-radius: 7px;
+
+  background: #1f2937;
+
+  color: #9ca3af;
+
+  font-size: 12px;
+
+  cursor: pointer;
+}
+
+.settings-field-input button:hover {
+  border-color: #6b7280;
+
+  color: #f9fafb;
+}
+
+.settings-actions {
+  display: flex;
+
+  gap: 10px;
+
+  justify-content: flex-end;
+
+  margin-top: 16px;
+}
+
+.settings-actions button {
+  padding: 8px 16px;
+
+  border: 1px solid #374151;
+
+  border-radius: 7px;
+
+  background: #1f2937;
+
+  color: #d1d5db;
+
+  font-size: 13px;
+
+  cursor: pointer;
+}
+
+.settings-actions button:hover {
+  border-color: #6b7280;
+}
+
+.settings-actions button:disabled {
+  opacity: 0.5;
+
+  cursor: default;
+}
+
+.settings-actions .settings-save {
+  border-color: #2563eb;
+
+  background: #1e3a8a;
+
+  color: #f9fafb;
+}
+
+.settings-actions .settings-save:hover {
+  border-color: #3b82f6;
+
+  background: #1e40af;
+}
+
 .agent-execution {
   margin-top: 18px;
 
