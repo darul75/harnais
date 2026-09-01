@@ -6,68 +6,82 @@ import type {
 
 interface Props {
   graph: GraphDefinition;
+
   executions: NodeExecution[];
+
   events: GraphEvent[];
+
+  selectedExecutionId:
+    | string
+    | null;
+
+  onSelectExecution: (
+    execution: NodeExecution,
+  ) => void;
 }
 
-function statusForNode(
+function latestExecution(
   nodeId: string,
   executions: NodeExecution[],
-): string {
-  const nodeExecutions = executions.filter(
-    (execution) =>
-      execution.nodeId === nodeId,
-  );
+): NodeExecution | undefined {
 
-  if (nodeExecutions.length === 0) {
-    return "pending";
-  }
+  const matches =
+    executions.filter(
+      (execution) =>
+        execution.nodeId === nodeId,
+    );
 
-  const latest =
-    nodeExecutions[nodeExecutions.length - 1];
-
-  return latest.status;
-}
-
-function latestAttempt(
-  nodeId: string,
-  executions: NodeExecution[],
-): number {
-  const matching = executions.filter(
-    (execution) =>
-      execution.nodeId === nodeId,
-  );
-
-  if (matching.length === 0) {
-    return 0;
-  }
-
-  return matching[matching.length - 1].attempt;
+  return matches[matches.length - 1];
 }
 
 export function GraphView({
   graph,
   executions,
+  selectedExecutionId,
+  onSelectExecution,
 }: Props) {
 
   const positions: Record<
     string,
     { x: number; y: number }
   > = {
-    planner: { x: 350, y: 40 },
-    coder: { x: 350, y: 150 },
-    tester: { x: 350, y: 260 },
-    reviewer: { x: 600, y: 390 },
+
+    planner: {
+      x: 350,
+      y: 40,
+    },
+
+    coder: {
+      x: 350,
+      y: 160,
+    },
+
+    security: {
+      x: 600,
+      y: 160,
+    },
+
+    tester: {
+      x: 350,
+      y: 280,
+    },
+
+    reviewer: {
+      x: 500,
+      y: 410,
+    },
   };
 
   return (
     <div className="graph-container">
+
       <svg
-        viewBox="0 0 900 500"
+        viewBox="0 0 900 540"
         className="graph-svg"
       >
 
         <defs>
+
           <marker
             id="arrow"
             markerWidth="10"
@@ -81,90 +95,117 @@ export function GraphView({
               fill="currentColor"
             />
           </marker>
+
         </defs>
 
-        {graph.edges.map((edge) => {
+        {graph.edges.map(
+          (edge) => {
 
-          const from =
-            positions[edge.from];
+            const from =
+              positions[edge.from];
 
-          const to =
-            positions[edge.to];
+            const to =
+              positions[edge.to];
 
-          if (!from || !to) {
-            return null;
-          }
+            if (!from || !to) {
+              return null;
+            }
 
-          return (
-            <line
-              key={edge.id}
-              x1={from.x + 90}
-              y1={from.y + 45}
-              x2={to.x + 90}
-              y2={to.y}
-              stroke="currentColor"
-              strokeWidth="2"
-              markerEnd="url(#arrow)"
-            />
-          );
-        })}
-
-        {graph.nodes.map((node) => {
-
-          const position =
-            positions[node.id] ?? {
-              x: 100,
-              y: 100,
-            };
-
-          const status =
-            statusForNode(
-              node.id,
-              executions,
-            );
-
-          const attempt =
-            latestAttempt(
-              node.id,
-              executions,
-            );
-
-          return (
-            <g
-              key={node.id}
-              transform={`translate(${position.x}, ${position.y})`}
-            >
-              <rect
-                width="180"
-                height="80"
-                rx="10"
-                className={`node node-${status}`}
+            return (
+              <line
+                key={edge.id}
+                x1={from.x + 90}
+                y1={from.y + 45}
+                x2={to.x + 90}
+                y2={to.y}
+                stroke="currentColor"
+                strokeWidth="2"
+                markerEnd="url(#arrow)"
               />
+            );
+          },
+        )}
 
-              <text
-                x="90"
-                y="32"
-                textAnchor="middle"
-                className="node-title"
-              >
-                {node.id}
-              </text>
+        {graph.nodes.map(
+          (node) => {
 
-              <text
-                x="90"
-                y="56"
-                textAnchor="middle"
-                className="node-status"
+            const position =
+              positions[node.id] ?? {
+                x: 100,
+                y: 100,
+              };
+
+            const execution =
+              latestExecution(
+                node.id,
+                executions,
+              );
+
+            const status =
+              execution?.status ??
+              "pending";
+
+            const selected =
+              execution?.id ===
+              selectedExecutionId;
+
+            return (
+              <g
+                key={node.id}
+                transform={
+                  `translate(${position.x}, ${position.y})`
+                }
+                className={
+                  selected
+                    ? "graph-node-selected"
+                    : "graph-node"
+                }
+                onClick={() => {
+                  if (execution) {
+                    onSelectExecution(
+                      execution,
+                    );
+                  }
+                }}
               >
-                {status}
-                {attempt > 0
-                  ? ` · attempt ${attempt}`
-                  : ""}
-              </text>
-            </g>
-          );
-        })}
+
+                <rect
+                  width="180"
+                  height="80"
+                  rx="10"
+                  className={
+                    `node node-${status}`
+                  }
+                />
+
+                <text
+                  x="90"
+                  y="30"
+                  textAnchor="middle"
+                  className="node-title"
+                >
+                  {node.id}
+                </text>
+
+                <text
+                  x="90"
+                  y="54"
+                  textAnchor="middle"
+                  className="node-status"
+                >
+                  {status}
+                  {execution
+                    ? ` · attempt ${execution.attempt}`
+                    : ""}
+                </text>
+
+              </g>
+            );
+          },
+        )}
+
       </svg>
+
     </div>
   );
 }

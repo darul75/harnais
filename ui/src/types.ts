@@ -35,11 +35,15 @@ export interface GraphDefinition {
 export interface NodeExecution {
   id: string;
   nodeId: string;
+  workerId: string;
   attempt: number;
   status: NodeStatus;
+
   input: Record<string, unknown>;
   output: Record<string, unknown>;
+
   error?: string;
+
   startedAt: string;
   completedAt?: string | null;
 }
@@ -47,12 +51,22 @@ export interface NodeExecution {
 export interface GraphEvent {
   id: number;
   time: string;
+
   runID: string;
+
   type: string;
+
   nodeID?: string;
   executionID?: string;
+
+  workerID?: string;
+  agentID?: string;
+  toolID?: string;
+
   message?: string;
+
   data?: Record<string, unknown>;
 }
 
-export type WorkflowState = Record<string, unknown>;
+export type WorkflowState =
+  Record<string, unknown>;

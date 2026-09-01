@@ -428,16 +428,24 @@ func (l *FakeLLM) Generate(
 
 	l.Called++
 
+	fmt.Printf(
+		"  [fake-llm:%s] call #%d\n",
+		l.Name,
+		l.Called,
+	)
+
+	// ------------------------------------------------------------
+	// Coder
+	// ------------------------------------------------------------
+
 	if l.Name == "coder-llm" {
 
 		switch l.Called {
 
 		case 1:
-
 			return agent.LLMResponse{
 				ToolCall: &agent.ToolCall{
 					Name: "read_file",
-
 					Input: map[string]any{
 						"path": "auth.go",
 					},
@@ -445,11 +453,9 @@ func (l *FakeLLM) Generate(
 			}, nil
 
 		case 2:
-
 			return agent.LLMResponse{
 				ToolCall: &agent.ToolCall{
 					Name: "edit_file",
-
 					Input: map[string]any{
 						"path": "auth.go",
 					},
@@ -457,38 +463,44 @@ func (l *FakeLLM) Generate(
 			}, nil
 
 		case 3:
-
 			return agent.LLMResponse{
 				ToolCall: &agent.ToolCall{
-					Name: "run_tests",
+					Name:  "run_tests",
+					Input: map[string]any{},
 				},
 			}, nil
 
 		default:
-
 			return agent.LLMResponse{
 				Text: "Authentication fix implemented.",
 			}, nil
 		}
 	}
 
-	// Security agent.
+	// ------------------------------------------------------------
+	// Security
+	// ------------------------------------------------------------
 
-	if l.Called == 1 {
+	if l.Name == "security-llm" {
+
+		if l.Called == 1 {
+			return agent.LLMResponse{
+				ToolCall: &agent.ToolCall{
+					Name: "read_file",
+					Input: map[string]any{
+						"path": "auth.go",
+					},
+				},
+			}, nil
+		}
 
 		return agent.LLMResponse{
-			ToolCall: &agent.ToolCall{
-				Name: "read_file",
-
-				Input: map[string]any{
-					"path": "auth.go",
-				},
-			},
+			Text: "No security issues found.",
 		}, nil
 	}
 
 	return agent.LLMResponse{
-		Text: "No security issues found.",
+		Text: "Done.",
 	}, nil
 }
 

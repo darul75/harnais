@@ -4,6 +4,14 @@ import type {
 
 interface Props {
   executions: NodeExecution[];
+
+  selectedExecutionId:
+    | string
+    | null;
+
+  onSelect: (
+    execution: NodeExecution,
+  ) => void;
 }
 
 function duration(
@@ -29,37 +37,67 @@ function duration(
 
 export function ExecutionList({
   executions,
+  selectedExecutionId,
+  onSelect,
 }: Props) {
+
+  if (executions.length === 0) {
+    return (
+      <div className="empty">
+        No executions yet.
+      </div>
+    );
+  }
 
   return (
     <div className="execution-list">
 
-      {executions.map((execution) => (
-        <div
-          key={execution.id}
-          className="execution-row"
-        >
+      {executions.map(
+        (execution) => {
 
-          <span className="execution-node">
-            {execution.nodeId}
-          </span>
+          const selected =
+            execution.id ===
+            selectedExecutionId;
 
-          <span>
-            #{execution.attempt}
-          </span>
+          return (
+            <button
+              key={execution.id}
+              className={
+                `execution-row ${
+                  selected
+                    ? "execution-selected"
+                    : ""
+                }`
+              }
+              onClick={() =>
+                onSelect(execution)
+              }
+            >
 
-          <span
-            className={`status status-${execution.status}`}
-          >
-            {execution.status}
-          </span>
+              <span className="execution-node">
+                {execution.nodeId}
+              </span>
 
-          <span>
-            {duration(execution)}
-          </span>
+              <span className="execution-attempt">
+                #{execution.attempt}
+              </span>
 
-        </div>
-      ))}
+              <span
+                className={
+                  `status status-${execution.status}`
+                }
+              >
+                {execution.status}
+              </span>
+
+              <span className="execution-duration">
+                {duration(execution)}
+              </span>
+
+            </button>
+          );
+        },
+      )}
 
     </div>
   );
