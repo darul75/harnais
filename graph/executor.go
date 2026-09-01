@@ -86,7 +86,7 @@ func (e *Executor) emit(event Event) {
 }
 
 // ------------------------------------------------------------
-// Start asynchronously
+// Start
 // ------------------------------------------------------------
 
 func (e *Executor) Start(
@@ -160,6 +160,7 @@ func (e *Executor) run(
 	run *Run,
 	initial State,
 ) (State, *Run, error) {
+
 	state := initial.Clone()
 
 	run.SetState(state)
@@ -171,7 +172,7 @@ func (e *Executor) run(
 	})
 
 	// --------------------------------------------------
-	// Activate root nodes.
+	// Activate roots.
 	// --------------------------------------------------
 
 	for nodeID := range run.Graph.Nodes {
@@ -187,7 +188,12 @@ func (e *Executor) run(
 	for {
 		select {
 		case <-ctx.Done():
-			e.failRun(run, ctx.Err())
+
+			e.failRun(
+				run,
+				ctx.Err(),
+			)
+
 			return state, run, ctx.Err()
 
 		default:
@@ -196,12 +202,19 @@ func (e *Executor) run(
 		ready := e.findReadyNodes(run)
 
 		if len(ready) == 0 {
+
 			if e.isFinished(run) {
+
 				now := time.Now()
 
 				run.mu.Lock()
-				run.Status = StatusCompleted
-				run.CompletedAt = &now
+
+				run.Status =
+					StatusCompleted
+
+				run.CompletedAt =
+					&now
+
 				run.mu.Unlock()
 
 				e.emit(Event{
@@ -213,31 +226,42 @@ func (e *Executor) run(
 				return state, run, nil
 			}
 
-			err := fmt.Errorf("execution is stuck")
+			err :=
+				fmt.Errorf(
+					"execution is stuck",
+				)
 
-			e.failRun(run, err)
+			e.failRun(
+				run,
+				err,
+			)
 
 			return state, run, err
 		}
 
-		results, err := e.executeWave(
-			ctx,
-			run,
-			ready,
-			state,
-		)
+		results, err :=
+			e.executeWave(
+				ctx,
+				run,
+				ready,
+				state,
+			)
 
 		if err != nil {
-			e.failRun(run, err)
+
+			e.failRun(
+				run,
+				err,
+			)
+
 			return state, run, err
 		}
 
-		// --------------------------------------------------
-		// Merge completed wave results.
-		// --------------------------------------------------
-
 		for _, execution := range results {
-			state.Merge(execution.Output)
+
+			state.Merge(
+				execution.Output,
+			)
 
 			run.SetState(state)
 
@@ -257,9 +281,11 @@ func (e *Executor) run(
 func (e *Executor) findReadyNodes(
 	run *Run,
 ) []*Node {
+
 	var ready []*Node
 
 	for nodeID, node := range run.Graph.Nodes {
+
 		if !run.IsNodeActivated(nodeID) {
 			continue
 		}
@@ -268,15 +294,17 @@ func (e *Executor) findReadyNodes(
 			continue
 		}
 
-		activations :=
-			run.PendingActivationsForNode(nodeID)
-
 		// --------------------------------------------------
 		// Root node.
 		// --------------------------------------------------
 
-		if len(run.Graph.Incoming(nodeID)) == 0 {
-			if !run.ConsumeNodeActivation(nodeID) {
+		if len(
+			run.Graph.Incoming(nodeID),
+		) == 0 {
+
+			if !run.ConsumeNodeActivation(
+				nodeID,
+			) {
 				continue
 			}
 
@@ -289,17 +317,28 @@ func (e *Executor) findReadyNodes(
 		}
 
 		// --------------------------------------------------
-		// Non-root node.
+		// Runtime activations.
 		// --------------------------------------------------
+
+		activations :=
+			run.PendingActivationsForNode(
+				nodeID,
+			)
 
 		if len(activations) == 0 {
 			continue
 		}
 
-		// JoinAll means every incoming graph edge
-		// must have produced a runtime activation.
+		// --------------------------------------------------
+		// JoinAll.
+		//
+		// We require at least one activation from
+		// every incoming graph edge.
+		// --------------------------------------------------
+
 		if node.JoinAll {
-			if !e.hasActivationForEveryIncomingEdge(
+
+			if !hasActivationForEveryIncomingEdge(
 				run,
 				nodeID,
 				activations,
@@ -308,7 +347,9 @@ func (e *Executor) findReadyNodes(
 			}
 		}
 
-		if !run.ConsumeNodeActivation(nodeID) {
+		if !run.ConsumeNodeActivation(
+			nodeID,
+		) {
 			continue
 		}
 
@@ -321,18 +362,28 @@ func (e *Executor) findReadyNodes(
 	return ready
 }
 
-func (e *Executor) hasActivationForEveryIncomingEdge(
+// ------------------------------------------------------------
+// Verify JoinAll
+// ------------------------------------------------------------
+
+func hasActivationForEveryIncomingEdge(
 	run *Run,
 	nodeID string,
 	activations []*EdgeActivation,
 ) bool {
-	incoming := run.Graph.Incoming(nodeID)
+
+	incoming :=
+		run.Graph.Incoming(nodeID)
 
 	for _, edge := range incoming {
+
 		found := false
 
 		for _, activation := range activations {
-			if activation.EdgeID == edge.ID {
+
+			if activation.EdgeID ==
+				edge.ID {
+
 				found = true
 				break
 			}
@@ -347,6 +398,79 @@ func (e *Executor) hasActivationForEveryIncomingEdge(
 }
 
 // ------------------------------------------------------------
+// Select runtime activations for a node execution
+// ------------------------------------------------------------
+
+func selectTriggeringActivations(
+	run *Run,
+	node *Node,
+) []*EdgeActivation {
+
+	activations :=
+		run.PendingActivationsForNode(
+			node.ID,
+		)
+
+	if len(activations) == 0 {
+		return nil
+	}
+
+	// --------------------------------------------------
+	// JoinAll:
+	//
+	// Select exactly ONE activation per incoming
+	// graph edge.
+	//
+	// Important:
+	// If three activations exist for the same incoming
+	// edge, we do NOT consume all three.
+	// --------------------------------------------------
+
+	if node.JoinAll {
+
+		incoming :=
+			run.Graph.Incoming(node.ID)
+
+		result :=
+			make(
+				[]*EdgeActivation,
+				0,
+				len(incoming),
+			)
+
+		for _, edge := range incoming {
+
+			for _, activation := range activations {
+
+				if activation.EdgeID ==
+					edge.ID {
+
+					result =
+						append(
+							result,
+							activation,
+						)
+
+					break
+				}
+			}
+		}
+
+		return result
+	}
+
+	// --------------------------------------------------
+	// Normal node:
+	//
+	// One runtime activation = one execution.
+	// --------------------------------------------------
+
+	return []*EdgeActivation{
+		activations[0],
+	}
+}
+
+// ------------------------------------------------------------
 // Activate outgoing edges
 // ------------------------------------------------------------
 
@@ -355,35 +479,39 @@ func (e *Executor) activateOutgoingEdges(
 	execution *NodeExecution,
 	state State,
 ) {
+
 	for _, edge := range run.Graph.Outgoing(
 		execution.NodeID,
 	) {
+
 		activate := true
 
 		if edge.Condition != nil {
-			activate = edge.Condition(state)
+			activate =
+				edge.Condition(state)
 		}
 
 		if !activate {
 			continue
 		}
 
-		activation := &EdgeActivation{
-			ID: fmt.Sprintf(
-				"activation-%d",
-				time.Now().UnixNano(),
-			),
+		activation :=
+			&EdgeActivation{
+				ID: fmt.Sprintf(
+					"activation-%d",
+					time.Now().UnixNano(),
+				),
 
-			EdgeID: edge.ID,
+				EdgeID: edge.ID,
 
-			FromExecutionID: execution.ID,
+				FromExecutionID: execution.ID,
 
-			FromNodeID: edge.From,
+				FromNodeID: edge.From,
 
-			ToNodeID: edge.To,
+				ToNodeID: edge.To,
 
-			CreatedAt: time.Now(),
-		}
+				CreatedAt: time.Now(),
+			}
 
 		run.AddEdgeActivation(
 			activation,
@@ -426,7 +554,7 @@ func (e *Executor) activateOutgoingEdges(
 }
 
 // ------------------------------------------------------------
-// Execute a wave in parallel
+// Execute wave
 // ------------------------------------------------------------
 
 func (e *Executor) executeWave(
@@ -435,93 +563,80 @@ func (e *Executor) executeWave(
 	nodes []*Node,
 	state State,
 ) ([]*NodeExecution, error) {
+
 	var wg sync.WaitGroup
 
 	var resultsMu sync.Mutex
 
-	results := make(
-		[]*NodeExecution,
-		0,
-		len(nodes),
-	)
+	results :=
+		make(
+			[]*NodeExecution,
+			0,
+			len(nodes),
+		)
 
-	errs := make(
-		chan error,
-		len(nodes),
-	)
+	errs :=
+		make(
+			chan error,
+			len(nodes),
+		)
 
 	for _, node := range nodes {
+
 		node := node
 
 		wg.Add(1)
 
 		go func() {
+
 			defer wg.Done()
 
-			activations :=
-				run.PendingActivationsForNode(
-					node.ID,
+			// --------------------------------------------------
+			// Determine exact runtime parents.
+			// --------------------------------------------------
+
+			triggeringActivations :=
+				selectTriggeringActivations(
+					run,
+					node,
 				)
 
-			execution := &NodeExecution{
-				ID: fmt.Sprintf(
-					"%s-%d",
-					node.ID,
-					time.Now().UnixNano(),
-				),
+			execution :=
+				&NodeExecution{
+					ID: fmt.Sprintf(
+						"%s-%d",
+						node.ID,
+						time.Now().UnixNano(),
+					),
 
-				NodeID: node.ID,
+					NodeID: node.ID,
 
-				WorkerID: node.Worker.ID(),
+					WorkerID: node.Worker.ID(),
 
-				Attempt: run.NextAttempt(
-					node.ID,
-				),
+					Attempt: run.NextAttempt(
+						node.ID,
+					),
 
-				Status: StatusRunning,
+					Status: StatusRunning,
 
-				Input: state.Clone(),
+					Input: state.Clone(),
 
-				StartedAt: time.Now(),
+					StartedAt: time.Now(),
 
-				TriggeredBy: make(
-					[]string,
-					0,
-					len(activations),
-				),
-			}
-
-			// --------------------------------------------------
-			// Attach triggering activations.
-			// --------------------------------------------------
-
-			for _, activation := range activations {
-
-				if node.JoinAll {
-					if !run.ConsumeEdgeActivation(
-						activation.ID,
-						execution.ID,
-					) {
-						continue
-					}
-
-					execution.TriggeredBy =
-						append(
-							execution.TriggeredBy,
-							activation.ID,
-						)
-
-					continue
+					TriggeredBy: make(
+						[]string,
+						0,
+						len(
+							triggeringActivations,
+						),
+					),
 				}
 
-				// Normal nodes consume exactly one
-				// activation for this execution.
+			// --------------------------------------------------
+			// Consume exactly the activations selected above.
+			// --------------------------------------------------
 
-				if len(
-					execution.TriggeredBy,
-				) > 0 {
-					break
-				}
+			for _, activation := range triggeringActivations {
 
 				if !run.ConsumeEdgeActivation(
 					activation.ID,
@@ -537,12 +652,28 @@ func (e *Executor) executeWave(
 					)
 			}
 
+			// --------------------------------------------------
+			// If there are still pending activations for this
+			// node, make sure another execution will happen.
+			// --------------------------------------------------
+
+			if len(
+				run.PendingActivationsForNode(
+					node.ID,
+				),
+			) > 0 {
+
+				run.ActivateNode(
+					node.ID,
+				)
+			}
+
 			run.AddExecution(
 				execution,
 			)
 
 			// --------------------------------------------------
-			// Context passed to everything below the node.
+			// Execution context.
 			// --------------------------------------------------
 
 			execCtx :=
@@ -606,7 +737,7 @@ func (e *Executor) executeWave(
 			})
 
 			// --------------------------------------------------
-			// Execute worker.
+			// Worker.
 			// --------------------------------------------------
 
 			result, err :=
@@ -618,6 +749,7 @@ func (e *Executor) executeWave(
 				)
 
 			if err != nil {
+
 				execution.Status =
 					StatusFailed
 
@@ -672,7 +804,7 @@ func (e *Executor) executeWave(
 			}
 
 			// --------------------------------------------------
-			// Worker completed.
+			// Completed.
 			// --------------------------------------------------
 
 			execution.Output =
@@ -735,6 +867,7 @@ func (e *Executor) executeWave(
 	wg.Wait()
 
 	select {
+
 	case err := <-errs:
 		return nil, err
 
@@ -750,6 +883,7 @@ func (e *Executor) executeWave(
 func (e *Executor) isFinished(
 	run *Run,
 ) bool {
+
 	run.mu.RLock()
 	defer run.mu.RUnlock()
 
@@ -777,13 +911,14 @@ func (e *Executor) isFinished(
 }
 
 // ------------------------------------------------------------
-// Fail run
+// Failure
 // ------------------------------------------------------------
 
 func (e *Executor) failRun(
 	run *Run,
 	err error,
 ) {
+
 	now :=
 		time.Now()
 

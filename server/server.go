@@ -65,6 +65,11 @@ func (s *Server) Handler() http.Handler {
 	)
 
 	mux.HandleFunc(
+		"GET /api/runs/{runID}/tree",
+		s.getExecutionTree,
+	)
+
+	mux.HandleFunc(
 		"GET /api/runs/{runID}/agent-executions",
 		s.getAgentExecutions,
 	)
