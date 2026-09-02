@@ -14,10 +14,10 @@ const researchPlannerPrompt = `You are a research planner.
 
 A user request is provided at runtime.
 
-Break the request into EXACTLY three distinct research sub-topics that
-together cover the request well.
+Break the request into one to three distinct research sub-topics that
+together cover the request well. Use as many as you need, at most three.
 
-Reply with ONLY the three sub-topics, one per line.
+Reply with ONLY the sub-topics, one per line.
 Do not number them, do not add headings, and do not add any other text.`
 
 const researchSubTopicPrompt = `You are a web researcher.
@@ -42,15 +42,14 @@ const researchSynthesizerPrompt = `You are a research synthesizer.
 The runtime state contains a "reports_dir" value with the directory
 for this run's reports.
 
-Read the research reports named:
-- research-1.md
-- research-2.md
-- research-3.md
+Before reading, call the list_files tool on the reports_dir directory
+to see which files exist. Each researcher writes a Markdown report
+named "research-<n>.md", but only for the sub-topics that were
+assigned; the files for unassigned streams do not exist.
 
-inside the reports_dir directory.
-
-Merge them into ONE coherent briefing that answers the user's original
-request. Produce the briefing as Markdown with:
+Read every "research-*.md" file that exists and merge them into ONE
+coherent briefing that answers the user's original request. Produce
+the briefing as Markdown with:
 
 # <Title>
 
@@ -65,6 +64,41 @@ available.
 Combined source list.
 
 Be concise and factual. Do not fabricate anything.`
+
+// splitResearchTopics turns the planner's newline plan into up to
+// three dense, non-empty sub-topics. Blank lines and empty slots are
+// dropped so leftover slots stay empty and their researcher can skip.
+func splitResearchTopics(
+	plan string,
+) []string {
+
+	topics :=
+		make([]string, 0, 3)
+
+	for _, line := range strings.Split(
+		strings.TrimSpace(plan),
+		"\n",
+	) {
+
+		topic :=
+			strings.TrimSpace(line)
+
+		if topic == "" {
+			continue
+		}
+
+		topics = append(
+			topics,
+			topic,
+		)
+
+		if len(topics) == 3 {
+			break
+		}
+	}
+
+	return topics
+}
 
 // ResearchWorkflow plans a research question into three parallel
 // web-research streams and synthesizes a briefing report.
@@ -123,11 +157,8 @@ func ResearchWorkflow(
 							plan, _ :=
 								state["agent_output"].(string)
 
-							lines :=
-								strings.Split(
-									strings.TrimSpace(plan),
-									"\n",
-								)
+							topics :=
+								splitResearchTopics(plan)
 
 							next :=
 								graph.State{}
@@ -136,11 +167,9 @@ func ResearchWorkflow(
 
 								topic := ""
 
-								if i < len(lines) {
+								if i < len(topics) {
 									topic =
-										strings.TrimSpace(
-											lines[i],
-										)
+										topics[i]
 								}
 
 								next[fmt.Sprintf(
@@ -157,7 +186,9 @@ func ResearchWorkflow(
 
 			// Three fixed parallel research streams. Each writes
 			// its own report file so parallel outputs do not
-			// overwrite each other in shared state.
+			// overwrite each other in shared state. Researchers
+			// whose sub-topic is empty skip instantly without
+			// calling the LLM.
 			for i := 1; i <= 3; i++ {
 
 				addNode(
@@ -168,15 +199,21 @@ func ResearchWorkflow(
 							i,
 						),
 
-						Worker: s.ResearchAgent(
-							fmt.Sprintf(
-								"researcher-%d",
-								i,
+						Worker: skipWhenEmpty(
+							s.ResearchAgent(
+								fmt.Sprintf(
+									"researcher-%d",
+									i,
+								),
+								fmt.Sprintf(
+									researchSubTopicPrompt,
+									i-1,
+									i,
+								),
 							),
 							fmt.Sprintf(
-								researchSubTopicPrompt,
+								"subtopic_%d",
 								i-1,
-								i,
 							),
 						),
 					},

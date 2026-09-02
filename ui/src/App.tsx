@@ -398,6 +398,27 @@ function App() {
   }, [runId]);
 
   // ------------------------------------------------------------
+  // Clear run-page state when leaving the run view.
+  //
+  // Navigating from a run to a workflow (or settings) page does
+  // not change runId through the route, so the previously loaded
+  // run would otherwise keep rendering.
+  // ------------------------------------------------------------
+
+  useEffect(() => {
+    if (!workflowId && !settings) {
+      return;
+    }
+
+    setRun(null);
+    setTree(null);
+    setEvents([]);
+    setSelectedExecutionId(null);
+    setSelectedEventId(null);
+    setError(null);
+  }, [workflowId, settings]);
+
+  // ------------------------------------------------------------
   // Derived data
   // ------------------------------------------------------------
 
@@ -469,7 +490,7 @@ function App() {
       <header className="header">
         <div>
           <h1>
-            Coding Harness
+            Harnais
           </h1>
 
           {run && (
@@ -694,7 +715,6 @@ function App() {
           {/* ================================================= */}
 
           {!settings &&
-            !run &&
             workflowId && (
             <WorkflowView
               workflowId={workflowId}
@@ -704,66 +724,16 @@ function App() {
           )}
 
           {/* ================================================= */}
-          {/* Initial screen */}
+          {/* Run */}
           {/* ================================================= */}
 
           {!settings &&
-            !run &&
-            !workflowId && (
-            <section className="panel start-panel">
-              <h2>
-                Start a coding workflow
-              </h2>
-
-              <p>
-                Enter a feature request or
-                bug fix above. The workflow
-                will plan, implement, test,
-                review, and expose every
-                execution, agent, LLM, and
-                tool step.
-              </p>
-
-              <form
-                className="start-form"
-                onSubmit={startRun}
-              >
-                <input
-                  className="task-input"
-                  value={task}
-                  onChange={(event) =>
-                    setTask(
-                      event.target.value,
-                    )
-                  }
-                  placeholder="Describe the feature or fix..."
-                  disabled={starting}
-                />
-
-                <button
-                  type="submit"
-                  disabled={
-                    starting ||
-                    !task.trim()
-                  }
-                >
-                  {starting
-                    ? "Starting..."
-                    : "Start Run"}
-                </button>
-              </form>
-            </section>
-          )}
-
-      {/* ======================================================= */}
-      {/* Run */}
-      {/* ======================================================= */}
-
-      {!settings && run && (
-        <>
-          {/* --------------------------------------------------- */}
-          {/* Run + Workflow side-by-side */}
-          {/* --------------------------------------------------- */}
+            !workflowId &&
+            run && (
+            <>
+              {/* --------------------------------------------------- */}
+              {/* Run + Workflow side-by-side */}
+              {/* --------------------------------------------------- */}
 
           <section className="panel run-bar">
             <div className="run-bar-main">
@@ -849,7 +819,9 @@ function App() {
               ) : (
                 <svg
                   className="graph-svg"
-                  viewBox="0 0 1100 540"
+                  viewBox={runViewBoxFor(
+                    graphLayout,
+                  )}
                   preserveAspectRatio="xMinYMin meet"
                 >
                   {/* Edges */}
@@ -1053,10 +1025,7 @@ function App() {
           {/* --------------------------------------------------- */}
 
           <section className="panel">
-            <details
-              className="panel-collapsible"
-              open
-            >
+            <details className="panel-collapsible">
               <summary className="panel-header">
                 <span className="caret">
                   {"\u25B8"}
@@ -1148,6 +1117,69 @@ function App() {
           />
         </>
       )}
+
+          {/* ================================================= */}
+          {/* Initial screen */}
+          {/* ================================================= */}
+
+          {!settings &&
+            !workflowId &&
+            !run && (
+            <section className="panel start-panel">
+              <h2>
+                Start a workflow
+              </h2>
+
+              <p>
+                Describe the feature, fix, or
+                question below. The workflow
+                will plan and run the steps,
+                exposing every execution,
+                agent, LLM, and tool step
+                along the way.
+              </p>
+
+              <form
+                className="start-form"
+                onSubmit={startRun}
+              >
+                <textarea
+                  className="task-input"
+                  value={task}
+                  onChange={(event) =>
+                    setTask(
+                      event.target.value,
+                    )
+                  }
+                  onKeyDown={(event) => {
+                    if (
+                      event.key ===
+                        "Enter" &&
+                      !event.shiftKey
+                    ) {
+                      event.preventDefault();
+                      event.currentTarget.form?.requestSubmit();
+                    }
+                  }}
+                  placeholder="Describe the feature, fix, or question..."
+                  disabled={starting}
+                />
+
+                <button
+                  type="submit"
+                  className="start-button"
+                  disabled={
+                    starting ||
+                    !task.trim()
+                  }
+                >
+                  {starting
+                    ? "Starting..."
+                    : "Start Run"}
+                </button>
+              </form>
+            </section>
+          )}
         </main>
       </div>
     </div>
@@ -1896,6 +1928,12 @@ function ExecutionDetails({
       {agent && (
         <CollapsibleSection
           title={`Agent · ${agent.agentId}`}
+          open={
+            agent.status ===
+              "running" ||
+            agent.status ===
+              "pending"
+          }
         >
           <AgentExecutionDetails
             agent={agent}
@@ -2714,6 +2752,37 @@ function buildGraphLayout(
   }
 
   return result;
+}
+
+// runViewBoxFor computes an SVG viewBox that fits the run graph's
+// actual node extents, so the container height follows the graph
+// rather than a fixed 540px.
+function runViewBoxFor(
+  nodes: GraphLayoutNode[],
+) {
+  if (!nodes.length) {
+    return "0 0 900 240";
+  }
+
+  const maxX =
+    Math.max(
+      ...nodes.map(
+        (node) =>
+          node.x + 100,
+      ),
+      900,
+    );
+
+  const maxY =
+    Math.max(
+      ...nodes.map(
+        (node) =>
+          node.y + 64,
+      ),
+      240,
+    );
+
+  return `0 0 ${maxX + 20} ${maxY + 20}`;
 }
 
 // ============================================================

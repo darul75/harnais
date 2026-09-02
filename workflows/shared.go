@@ -260,6 +260,10 @@ func proseTools(
 ) *agent.ToolRegistry {
 
 	return agent.NewToolRegistry(
+		tools.ListFiles{
+			Workspace: s.workspace,
+		},
+
 		tools.ReadFile{
 			Workspace: s.workspace,
 		},
@@ -268,6 +272,59 @@ func proseTools(
 			Workspace: s.workspace,
 		},
 	)
+}
+
+// ------------------------------------------------------------
+// Skippable agent
+// ------------------------------------------------------------
+
+// skippableAgent wraps an agent so its work is skipped (without
+// invoking the LLM) when a runtime state key is empty. It lets
+// workflows keep fixed parallel slots (e.g. three researchers)
+// while only doing real work for the slots that were filled.
+type skippableAgent struct {
+	agent *agent.LoopAgent
+
+	stateKey string
+}
+
+func (w *skippableAgent) ID() string {
+	return w.agent.AgentID
+}
+
+func (w *skippableAgent) Run(
+	ctx context.Context,
+	input graph.WorkerInput,
+) (graph.WorkerResult, error) {
+
+	value, _ :=
+		input.State[w.stateKey].(string)
+
+	if strings.TrimSpace(value) == "" {
+		return graph.WorkerResult{
+			State: graph.State{
+				"skipped": true,
+			},
+		}, nil
+	}
+
+	return w.agent.Run(
+		ctx,
+		input,
+	)
+}
+
+// skipWhenEmpty returns a worker that runs agent only when the
+// state value at stateKey is non-empty, skipping it otherwise.
+func skipWhenEmpty(
+	agent *agent.LoopAgent,
+	stateKey string,
+) graph.Worker {
+
+	return &skippableAgent{
+		agent:    agent,
+		stateKey: stateKey,
+	}
 }
 
 // ------------------------------------------------------------

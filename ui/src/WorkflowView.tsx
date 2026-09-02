@@ -459,7 +459,7 @@ export function WorkflowView({
           className="start-form"
           onSubmit={handleStart}
         >
-          <input
+          <textarea
             className="task-input"
             value={task}
             onChange={(event) =>
@@ -467,12 +467,23 @@ export function WorkflowView({
                 event.target.value,
               )
             }
-            placeholder="Describe the feature or fix..."
+            onKeyDown={(event) => {
+              if (
+                event.key ===
+                  "Enter" &&
+                !event.shiftKey
+              ) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+            placeholder="Describe the feature, fix, or question..."
             disabled={starting}
           />
 
           <button
             type="submit"
+            className="start-button"
             disabled={
               starting ||
               !task.trim()

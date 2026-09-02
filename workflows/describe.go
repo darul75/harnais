@@ -129,6 +129,38 @@ func Describe(
 				"opencode",
 			}
 
+		case *skippableAgent:
+
+			nodeInfo.Kind = NodeAgent
+
+			nodeInfo.AgentID = worker.agent.AgentID
+
+			nodeInfo.Prompt = worker.agent.Prompt
+
+			if worker.agent.ToolRegistry != nil {
+
+				definitions :=
+					worker.agent.ToolRegistry.Definitions()
+
+				tools := make(
+					[]string,
+					0,
+					len(definitions),
+				)
+
+				for _, definition := range definitions {
+					tools =
+						append(
+							tools,
+							definition.Name,
+						)
+				}
+
+				sort.Strings(tools)
+
+				nodeInfo.Tools = tools
+			}
+
 		case *graph.FuncWorker:
 
 			nodeInfo.Kind = NodeFunction
