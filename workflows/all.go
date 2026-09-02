@@ -20,8 +20,6 @@ func Register(
 
 		BasicWorkflow(s),
 
-		CodingWorkflow(s),
-
 		OpenCodeCodingWorkflow(s),
 
 		ResearchWorkflow(s),

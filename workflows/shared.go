@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"harnais/agent"
 	"harnais/config"
@@ -43,45 +43,6 @@ func (s *Shared) LLMFactory(
 ) func() agent.LLM {
 
 	return s.store.LLMFactory(kind)
-}
-
-// ------------------------------------------------------------
-// Planner
-// ------------------------------------------------------------
-
-func (s *Shared) Planner() *graph.FuncWorker {
-
-	return graph.NewFuncWorker(
-		"planner",
-
-		func(
-			ctx context.Context,
-			state graph.State,
-		) (graph.State, error) {
-
-			task, ok :=
-				state["task"].(string)
-
-			if !ok || task == "" {
-				return nil, fmt.Errorf(
-					"planner: task is missing",
-				)
-			}
-
-			fmt.Println(
-				"[planner] Task:",
-				task,
-			)
-
-			time.Sleep(
-				1 * time.Second,
-			)
-
-			return graph.State{
-				"plan": task,
-			}, nil
-		},
-	)
 }
 
 // ------------------------------------------------------------
@@ -132,6 +93,25 @@ func (s *Shared) Coder(
 // ------------------------------------------------------------
 // Security agent (read-only)
 // ------------------------------------------------------------
+
+const securityPrompt = `You are a security review agent working inside the provided workspace.
+
+A user request and workflow state are provided at runtime.
+
+Review the implementation related to the user's request for security issues.
+
+First inspect the workspace with list_files.
+Do not assume a project type or specific files.
+Read the relevant implementation before reaching conclusions.
+
+Do not modify files.
+Use git_diff when useful.
+
+Report concrete security findings with affected files and reasoning.
+If there are no significant issues, say so explicitly.
+
+Work only inside the workspace.
+Do not fabricate findings or tool results.`
 
 func (s *Shared) Security(
 	prompt string,
@@ -188,6 +168,56 @@ func (s *Shared) OpenCodeCoder(
 			"opencode",
 			"model",
 		),
+	}
+}
+
+// OpenCodePlanner returns a read-only OpenCode worker that produces
+// a plan and stores it under state["plan"], which the coder's prompt
+// then consumes. The model defaults to the opencode provider model
+// but can be overridden with the plannerModel setting.
+func (s *Shared) OpenCodePlanner(
+	prompt string,
+) *opencode.Worker {
+
+	return &opencode.Worker{
+		AgentID: "opencode-planner",
+
+		Prompt: prompt,
+
+		Dir: s.workspace.Root,
+
+		Model: s.store.Get(
+			"opencode",
+			"plannerModel",
+		),
+
+		ReadOnly: true,
+
+		OutputKey: "plan",
+	}
+}
+
+// OpenCodeReviewer returns a read-only OpenCode worker that reviews
+// the implemented change and ends with a strict VERDICT line. The
+// model defaults to the opencode provider model but can be
+// overridden with the reviewerModel setting.
+func (s *Shared) OpenCodeReviewer(
+	prompt string,
+) *opencode.Worker {
+
+	return &opencode.Worker{
+		AgentID: "opencode-reviewer",
+
+		Prompt: prompt,
+
+		Dir: s.workspace.Root,
+
+		Model: s.store.Get(
+			"opencode",
+			"reviewerModel",
+		),
+
+		ReadOnly: true,
 	}
 }
 
@@ -424,6 +454,40 @@ func (s *Shared) WriteReport(
 // Tester
 // ------------------------------------------------------------
 
+// testCommands returns the auto-detected test command for the
+// workspace root: go.mod selects "go test ./...", package.json
+// selects the npm/pnpm/yarn test script. Returns nil when no
+// project test command is detected.
+func (s *Shared) testCommand() (string, []string) {
+
+	root :=
+		s.workspace.Root
+
+	if _, err :=
+		os.Stat(
+			filepath.Join(root, "go.mod"),
+		); err == nil {
+
+		return "go", []string{
+			"test",
+			"./...",
+		}
+	}
+
+	if _, err :=
+		os.Stat(
+			filepath.Join(root, "package.json"),
+		); err == nil {
+
+		return "npm", []string{"test"}
+	}
+
+	return "", nil
+}
+
+// Tester returns a deterministic worker that runs the project's
+// auto-detected test command in the workspace and reports whether
+// it passed from the process exit code.
 func (s *Shared) Tester() *graph.FuncWorker {
 
 	return graph.NewFuncWorker(
@@ -445,17 +509,46 @@ func (s *Shared) Tester() *graph.FuncWorker {
 
 			attempt++
 
+			program, args :=
+				s.testCommand()
+
+			if program == "" {
+
+				fmt.Println(
+					"[tester] No test command detected, marking as passed",
+				)
+
+				return graph.State{
+					"tests_passed": true,
+
+					"test_attempts": attempt,
+
+					"test_output": "No test command detected in the workspace.",
+				}, nil
+			}
+
 			fmt.Printf(
-				"[tester] Running tests, attempt %d...\n",
+				"[tester] Running %s %v (attempt %d)...\n",
+				program,
+				args,
 				attempt,
 			)
 
-			time.Sleep(
-				1 * time.Second,
-			)
+			cmd :=
+				exec.CommandContext(
+					ctx,
+					program,
+					args...,
+				)
+
+			cmd.Dir =
+				s.workspace.Root
+
+			output, err :=
+				cmd.CombinedOutput()
 
 			passed :=
-				attempt >= 2
+				err == nil
 
 			if passed {
 
@@ -474,39 +567,62 @@ func (s *Shared) Tester() *graph.FuncWorker {
 				"tests_passed": passed,
 
 				"test_attempts": attempt,
+
+				"test_output": string(output),
 			}, nil
 		},
 	)
 }
 
 // ------------------------------------------------------------
-// Reviewer
+// Reviewer gate
 // ------------------------------------------------------------
 
-func (s *Shared) Reviewer() *graph.FuncWorker {
+// ReviewGate returns a worker that parses the reviewer's verdict
+// from its text output into state: approved (bool), review_feedback
+// (string), and an incremented review_attempts counter.
+func (s *Shared) ReviewGate() *graph.FuncWorker {
 
 	return graph.NewFuncWorker(
-		"reviewer",
+		"review_gate",
 
 		func(
 			ctx context.Context,
 			state graph.State,
 		) (graph.State, error) {
 
-			fmt.Println(
-				"[reviewer] Reviewing all results...",
-			)
+			output, _ :=
+				state["output"].(string)
 
-			time.Sleep(
-				1 * time.Second,
-			)
+			attempt := 0
 
-			fmt.Println(
-				"[reviewer] APPROVED",
+			if value, ok :=
+				state["review_attempts"]; ok {
+
+				attempt =
+					value.(int)
+			}
+
+			attempt++
+
+			approved :=
+				strings.Contains(
+					strings.ToUpper(output),
+					"VERDICT: APPROVED",
+				)
+
+			fmt.Printf(
+				"[review_gate] Attempt %d: approved=%v\n",
+				attempt,
+				approved,
 			)
 
 			return graph.State{
-				"approved": true,
+				"approved": approved,
+
+				"review_feedback": output,
+
+				"review_attempts": attempt,
 			}, nil
 		},
 	)

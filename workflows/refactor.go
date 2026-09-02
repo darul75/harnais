@@ -23,8 +23,10 @@ Work only inside the workspace.
 Do not access the harness source code.
 Do not fabricate tool results or test results.`
 
-// RefactorWorkflow plans, refactors, and tests the requested
-// code, then reviews the result.
+// RefactorWorkflow plans, refactors, tests, and reviews with the
+// same bounded retry loop as the coding workflow: test failures and
+// reviewer rejections send the result back to the coder, capped at
+// two review iterations.
 func RefactorWorkflow(
 	s *Shared,
 ) *Workflow {
@@ -34,7 +36,7 @@ func RefactorWorkflow(
 
 		Title: "Code Refactor",
 
-		Description: "Plan and apply a behaviour-preserving refactor of the requested code, verify with tests, then review.",
+		Description: "Plan and apply a behaviour-preserving refactor, verify with tests, then review with a bounded retry loop until approved.",
 
 		Keywords: []string{
 			"refactor",
@@ -57,7 +59,19 @@ func RefactorWorkflow(
 				g,
 				&graph.Node{
 					ID:     "planner",
-					Worker: s.Planner(),
+					Worker: s.OpenCodePlanner(opencodePlannerPrompt),
+				},
+			)
+
+			addNode(
+				g,
+				&graph.Node{
+					ID: "write_plan_report",
+
+					Worker: s.WriteReport(
+						"plan",
+						"plan",
+					),
 				},
 			)
 
@@ -65,7 +79,15 @@ func RefactorWorkflow(
 				g,
 				&graph.Node{
 					ID:     "coder",
-					Worker: s.Coder(refactorPrompt),
+					Worker: s.OpenCodeCoder(refactorPrompt),
+				},
+			)
+
+			addNode(
+				g,
+				&graph.Node{
+					ID:     "security",
+					Worker: s.Security(securityPrompt),
 				},
 			)
 
@@ -82,14 +104,39 @@ func RefactorWorkflow(
 				&graph.Node{
 					ID: "reviewer",
 
-					Worker: s.Reviewer(),
+					Worker: s.OpenCodeReviewer(
+						opencodeReviewerPrompt,
+					),
 
 					JoinAll: true,
 				},
 			)
 
+			addNode(
+				g,
+				&graph.Node{
+					ID:     "review_gate",
+					Worker: s.ReviewGate(),
+				},
+			)
+
+			addNode(
+				g,
+				&graph.Node{
+					ID: "write_review_report",
+
+					Worker: s.WriteReport(
+						"review",
+						"review_feedback",
+					),
+				},
+			)
+
 			addEdge(g, "planner", "coder")
+			addEdge(g, "planner", "write_plan_report")
+
 			addEdge(g, "coder", "tester")
+			addEdge(g, "coder", "security")
 
 			addConditionalEdge(
 				g,
@@ -98,7 +145,11 @@ func RefactorWorkflow(
 				func(state graph.State) bool {
 					passed, _ :=
 						state["tests_passed"].(bool)
-					return !passed
+
+					attempts, _ :=
+						state["test_attempts"].(int)
+
+					return !passed && attempts < 3
 				},
 			)
 
@@ -109,7 +160,44 @@ func RefactorWorkflow(
 				func(state graph.State) bool {
 					passed, _ :=
 						state["tests_passed"].(bool)
-					return passed
+
+					attempts, _ :=
+						state["test_attempts"].(int)
+
+					return passed || attempts >= 3
+				},
+			)
+
+			addEdge(g, "security", "reviewer")
+			addEdge(g, "reviewer", "review_gate")
+
+			addConditionalEdge(
+				g,
+				"review_gate",
+				"coder",
+				func(state graph.State) bool {
+					approved, _ :=
+						state["approved"].(bool)
+
+					attempts, _ :=
+						state["review_attempts"].(int)
+
+					return !approved && attempts < 2
+				},
+			)
+
+			addConditionalEdge(
+				g,
+				"review_gate",
+				"write_review_report",
+				func(state graph.State) bool {
+					approved, _ :=
+						state["approved"].(bool)
+
+					attempts, _ :=
+						state["review_attempts"].(int)
+
+					return approved || attempts >= 2
 				},
 			)
 

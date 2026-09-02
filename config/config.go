@@ -138,6 +138,32 @@ var providers = []Provider{
 					"opencode/claude-haiku-4-5",
 				},
 			},
+
+			{
+				Key:         "plannerModel",
+				Label:       "Planner Model",
+				Type:        FieldString,
+				Placeholder: "opencode/deepseek-v4-flash",
+
+				Suggestions: []string{
+					"opencode/deepseek-v4-flash",
+					"opencode/gemini-3-flash",
+					"opencode/claude-haiku-4-5",
+				},
+			},
+
+			{
+				Key:         "reviewerModel",
+				Label:       "Reviewer Model",
+				Type:        FieldString,
+				Placeholder: "opencode/deepseek-v4-flash",
+
+				Suggestions: []string{
+					"opencode/deepseek-v4-flash",
+					"opencode/gemini-3-flash",
+					"opencode/claude-haiku-4-5",
+				},
+			},
 		},
 	},
 

@@ -4,6 +4,20 @@ import "harnais/graph"
 
 const OpenCodeCodingWorkflowID = "coding-opencode"
 
+const opencodePlannerPrompt = `You are a planning agent working inside the provided workspace.
+
+A user request is provided at runtime.
+
+Inspect the workspace with list_files and read the relevant existing code before proposing anything. Do not assume a project type or specific files.
+
+Produce a concrete, structured Markdown plan that includes:
+- The goal in one or two sentences
+- The exact steps to implement the change, in order
+- Which files to create or modify, and why
+- Which tests to run to verify the change
+
+Be specific enough that a coding agent can follow the plan without re-planning from scratch. Do not modify any files.`
+
 const opencodeCoderPrompt = `You are an autonomous coding agent.
 
 A user request and, when available, a plan are provided.
@@ -21,9 +35,26 @@ Do not fabricate tool results or test results.
 
 Finish with a concise summary of what you changed and the test results.`
 
-// OpenCodeCodingWorkflow mirrors the coding workflow but implements
-// the coding step through the OpenCode CLI instead of the built-in
-// LoopAgent coder. Both variants remain available in the registry.
+const opencodeReviewerPrompt = `You are a code reviewer.
+
+A user request, plan, and test output are provided when available. Review the change that was just implemented in the current working directory.
+
+Inspect the diff with git diff and read the changed files before reaching conclusions.
+Evaluate the change against the plan and the request:
+- Does it implement what was asked?
+- Is it correct, readable, and maintainable?
+- Are tests passing or are failures explained?
+
+End your response with a single line on its own, exactly one of:
+VERDICT: APPROVED
+VERDICT: REJECTED
+
+Then provide concise, concrete feedback listing anything that must be fixed before approval. Do not modify any files.`
+
+// OpenCodeCodingWorkflow plans, implements through the OpenCode CLI,
+// tests, security-reviews, and then reviews with a bounded retry
+// loop that sends the result back to the coder when tests fail or
+// the reviewer rejects, capped at two review iterations.
 func OpenCodeCodingWorkflow(
 	s *Shared,
 ) *Workflow {
@@ -33,7 +64,7 @@ func OpenCodeCodingWorkflow(
 
 		Title: "Coding Implementation (OpenCode)",
 
-		Description: "Plan, implement with OpenCode, and test a requested feature or bug fix, with security review and a retry loop until tests pass.",
+		Description: "Plan, implement with OpenCode, test, and review with a retry loop until tests pass and the reviewer approves (capped at two review iterations).",
 
 		Keywords: []string{
 			"implement",
@@ -57,7 +88,19 @@ func OpenCodeCodingWorkflow(
 				g,
 				&graph.Node{
 					ID:     "planner",
-					Worker: s.Planner(),
+					Worker: s.OpenCodePlanner(opencodePlannerPrompt),
+				},
+			)
+
+			addNode(
+				g,
+				&graph.Node{
+					ID: "write_plan_report",
+
+					Worker: s.WriteReport(
+						"plan",
+						"plan",
+					),
 				},
 			)
 
@@ -93,15 +136,39 @@ func OpenCodeCodingWorkflow(
 				&graph.Node{
 					ID: "reviewer",
 
-					Worker: s.Reviewer(),
+					Worker: s.OpenCodeReviewer(
+						opencodeReviewerPrompt,
+					),
 
 					JoinAll: true,
 				},
 			)
 
+			addNode(
+				g,
+				&graph.Node{
+					ID:     "review_gate",
+					Worker: s.ReviewGate(),
+				},
+			)
+
+			addNode(
+				g,
+				&graph.Node{
+					ID: "write_review_report",
+
+					Worker: s.WriteReport(
+						"review",
+						"review_feedback",
+					),
+				},
+			)
+
 			addEdge(g, "planner", "coder")
-			addEdge(g, "planner", "security")
+			addEdge(g, "planner", "write_plan_report")
+
 			addEdge(g, "coder", "tester")
+			addEdge(g, "coder", "security")
 
 			addConditionalEdge(
 				g,
@@ -110,7 +177,11 @@ func OpenCodeCodingWorkflow(
 				func(state graph.State) bool {
 					passed, _ :=
 						state["tests_passed"].(bool)
-					return !passed
+
+					attempts, _ :=
+						state["test_attempts"].(int)
+
+					return !passed && attempts < 3
 				},
 			)
 
@@ -121,11 +192,46 @@ func OpenCodeCodingWorkflow(
 				func(state graph.State) bool {
 					passed, _ :=
 						state["tests_passed"].(bool)
-					return passed
+
+					attempts, _ :=
+						state["test_attempts"].(int)
+
+					return passed || attempts >= 3
 				},
 			)
 
 			addEdge(g, "security", "reviewer")
+			addEdge(g, "reviewer", "review_gate")
+
+			addConditionalEdge(
+				g,
+				"review_gate",
+				"coder",
+				func(state graph.State) bool {
+					approved, _ :=
+						state["approved"].(bool)
+
+					attempts, _ :=
+						state["review_attempts"].(int)
+
+					return !approved && attempts < 2
+				},
+			)
+
+			addConditionalEdge(
+				g,
+				"review_gate",
+				"write_review_report",
+				func(state graph.State) bool {
+					approved, _ :=
+						state["approved"].(bool)
+
+					attempts, _ :=
+						state["review_attempts"].(int)
+
+					return approved || attempts >= 2
+				},
+			)
 
 			return g
 		},

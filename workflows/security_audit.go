@@ -57,7 +57,19 @@ func SecurityAuditWorkflow(
 				g,
 				&graph.Node{
 					ID:     "planner",
-					Worker: s.Planner(),
+					Worker: s.OpenCodePlanner(opencodePlannerPrompt),
+				},
+			)
+
+			addNode(
+				g,
+				&graph.Node{
+					ID: "write_plan_report",
+
+					Worker: s.WriteReport(
+						"plan",
+						"plan",
+					),
 				},
 			)
 
@@ -76,14 +88,40 @@ func SecurityAuditWorkflow(
 				&graph.Node{
 					ID: "reviewer",
 
-					Worker: s.Reviewer(),
+					Worker: s.OpenCodeReviewer(
+						opencodeReviewerPrompt,
+					),
 
 					JoinAll: true,
 				},
 			)
 
+			addNode(
+				g,
+				&graph.Node{
+					ID:     "review_gate",
+					Worker: s.ReviewGate(),
+				},
+			)
+
+			addNode(
+				g,
+				&graph.Node{
+					ID: "write_review_report",
+
+					Worker: s.WriteReport(
+						"review",
+						"review_feedback",
+					),
+				},
+			)
+
 			addEdge(g, "planner", "security")
+			addEdge(g, "planner", "write_plan_report")
+
 			addEdge(g, "security", "reviewer")
+			addEdge(g, "reviewer", "review_gate")
+			addEdge(g, "review_gate", "write_review_report")
 
 			return g
 		},

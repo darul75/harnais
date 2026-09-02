@@ -853,6 +853,20 @@ button:disabled {
   white-space: nowrap;
 }
 
+.run-bar-pdf {
+  color: #60a5fa;
+
+  font-size: 12px;
+
+  text-decoration: none;
+
+  white-space: nowrap;
+}
+
+.run-bar-pdf:hover {
+  text-decoration: underline;
+}
+
 .run-bar-counts {
   display: flex;
 

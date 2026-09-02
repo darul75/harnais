@@ -82,10 +82,10 @@ func TestStoreOpenCodeProvider(t *testing.T) {
 		)
 	}
 
-	if len(openCode.Fields) != 1 ||
+	if len(openCode.Fields) != 3 ||
 		openCode.Fields[0].Key != "model" {
 		t.Errorf(
-			"expected a model field, got %+v",
+			"expected model + planner + reviewer fields, got %+v",
 			openCode.Fields,
 		)
 	}

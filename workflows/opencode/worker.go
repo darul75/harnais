@@ -45,6 +45,29 @@ const permissionConfig = `{
   }
 }`
 
+// readOnlyPermissionConfig is like permissionConfig but denies all
+// file edits, for phases (planning, review) that must not mutate
+// the workspace.
+const readOnlyPermissionConfig = `{
+  "*": "deny",
+  "read": "allow",
+  "external_directory": "deny",
+  "webfetch": "deny",
+  "websearch": "deny",
+  "task": "deny",
+  "skill": "deny",
+  "bash": {
+    "go *": "allow",
+    "git *": "allow",
+    "npm *": "allow",
+    "node *": "allow",
+    "pnpm *": "allow",
+    "yarn *": "allow",
+    "grep *": "allow",
+    "*": "deny"
+  }
+}`
+
 // Worker is a graph Worker that runs a task through the OpenCode CLI.
 type Worker struct {
 	// AgentID is the agent identifier shown in the run UI.
@@ -59,6 +82,14 @@ type Worker struct {
 	// Model optionally overrides the model in provider/model format.
 	// Empty uses OpenCode's default for the configured provider.
 	Model string
+
+	// ReadOnly restricts the subprocess to read-only operations
+	// (no file edits). Used for planning and review phases.
+	ReadOnly bool
+
+	// OutputKey is the state key the final assistant text is stored
+	// under. Defaults to "output".
+	OutputKey string
 
 	// Binary is the OpenCode executable. Defaults to "opencode".
 	Binary string
@@ -233,10 +264,18 @@ func (w *Worker) runOpenCode(
 
 	cmd.Dir = w.Dir
 
+	permission :=
+		permissionConfig
+
+	if w.ReadOnly {
+		permission =
+			readOnlyPermissionConfig
+	}
+
 	cmd.Env =
 		append(
 			os.Environ(),
-			"OPENCODE_PERMISSION="+permissionConfig,
+			"OPENCODE_PERMISSION="+permission,
 			"OPENCODE_DISABLE_AUTOUPDATE=1",
 		)
 
@@ -420,9 +459,16 @@ func (w *Worker) runOpenCode(
 	sessionID, text :=
 		recorder.output()
 
+	outputKey :=
+		w.OutputKey
+
+	if outputKey == "" {
+		outputKey = "output"
+	}
+
 	return graph.WorkerResult{
 		State: graph.State{
-			"output": text,
+			outputKey: text,
 
 			"sessionId": sessionID,
 		},
@@ -463,6 +509,28 @@ func (w *Worker) buildPrompt(
 			&builder,
 			"Plan: %s\n",
 			plan,
+		)
+	}
+
+	if testOutput, ok :=
+		state["test_output"].(string); ok &&
+		testOutput != "" {
+
+		fmt.Fprintf(
+			&builder,
+			"Test output: %s\n",
+			testOutput,
+		)
+	}
+
+	if feedback, ok :=
+		state["review_feedback"].(string); ok &&
+		feedback != "" {
+
+		fmt.Fprintf(
+			&builder,
+			"Previous review feedback: %s\n",
+			feedback,
 		)
 	}
 

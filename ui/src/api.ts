@@ -329,3 +329,14 @@ export function getAudioUrl(
 ) {
   return `${API_BASE}/api/runs/${encodeURIComponent(runId)}/audio/${encodeURIComponent(name)}`;
 }
+
+export function getUploadUrl(
+  path: string,
+) {
+  const parts = path.split("/");
+
+  const name =
+    parts[parts.length - 1];
+
+  return `${API_BASE}/api/uploads/${encodeURIComponent(name)}`;
+}

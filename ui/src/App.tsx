@@ -19,6 +19,7 @@ import {
   getRunReport,
   getRunReports,
   getRunTree,
+  getUploadUrl,
   getWorkflow,
   getWorkflows,
 } from "./api";
@@ -835,6 +836,21 @@ function App() {
                   )}`
                 : ""}
             </span>
+
+            {typeof run.state?.pdf_path ===
+              "string" &&
+              run.state.pdf_path && (
+                <a
+                  className="run-bar-pdf"
+                  href={getUploadUrl(
+                    run.state.pdf_path,
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open source PDF
+                </a>
+              )}
 
             <div className="run-bar-counts">
               <span>

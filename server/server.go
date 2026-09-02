@@ -133,6 +133,11 @@ func (s *Server) Handler() http.Handler {
 	)
 
 	mux.HandleFunc(
+		"GET /api/uploads/{name}",
+		s.getUpload,
+	)
+
+	mux.HandleFunc(
 		"GET /api/runs",
 		s.getRuns,
 	)
@@ -371,6 +376,26 @@ func (s *Server) uploadFile(
 		name = "upload.pdf"
 	}
 
+	// Keep the readable base name but make every upload unique so
+	// re-uploading a same-named PDF cannot overwrite an existing
+	// file a run may still reference.
+	ext :=
+		filepath.Ext(name)
+
+	base :=
+		strings.TrimSuffix(
+			name,
+			ext,
+		)
+
+	name =
+		fmt.Sprintf(
+			"%s-%d%s",
+			base,
+			time.Now().UnixNano(),
+			ext,
+		)
+
 	relative :=
 		filepath.Join(
 			"uploads",
@@ -431,6 +456,102 @@ func (s *Server) uploadFile(
 		map[string]any{
 			"path": relative,
 		},
+	)
+}
+
+// getUpload serves a previously uploaded file (e.g. a PDF) so the UI
+// can link to it. Only PDFs are served, matching what uploadFile
+// accepts.
+func (s *Server) getUpload(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	if s.Workspace == nil {
+		http.Error(
+			w,
+			"workspace not configured",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	name :=
+		r.PathValue("name")
+
+	if name == "" ||
+		!strings.HasSuffix(
+			strings.ToLower(name),
+			".pdf",
+		) {
+		http.Error(
+			w,
+			"not found",
+			http.StatusNotFound,
+		)
+		return
+	}
+
+	resolved, err :=
+		s.Workspace.Resolve(
+			filepath.Join(
+				"uploads",
+				name,
+			),
+		)
+
+	if err != nil {
+		http.Error(
+			w,
+			"not found",
+			http.StatusNotFound,
+		)
+		return
+	}
+
+	file, err :=
+		os.Open(resolved)
+
+	if err != nil {
+		http.Error(
+			w,
+			"not found",
+			http.StatusNotFound,
+		)
+		return
+	}
+
+	defer file.Close()
+
+	info, err :=
+		file.Stat()
+
+	if err != nil {
+		http.Error(
+			w,
+			"not found",
+			http.StatusNotFound,
+		)
+		return
+	}
+
+	if contentType :=
+		mime.TypeByExtension(
+			filepath.Ext(name),
+		); contentType != "" {
+
+		w.Header().Set(
+			"Content-Type",
+			contentType,
+		)
+	}
+
+	http.ServeContent(
+		w,
+		r,
+		name,
+		info.ModTime(),
+		file,
 	)
 }
 
