@@ -11,11 +11,12 @@ import {
   ApiError,
   createEventSource,
   createRun,
+  getAllReports,
   getRun,
   getRuns,
+  getRunReport,
+  getRunReports,
   getRunTree,
-  getReport,
-  getReports,
   getWorkflows,
 } from "./api";
 
@@ -1136,7 +1137,15 @@ function App() {
             </details>
           </section>
 
-          <ReportsPanel />
+          <ReportsPanel
+            runId={run.id}
+            active={
+              run.status ===
+                "running" ||
+              run.status ===
+                "pending"
+            }
+          />
         </>
       )}
         </main>
@@ -1149,12 +1158,23 @@ function App() {
 // Reports panel
 // ============================================================
 
-function ReportsPanel() {
+type ReportsMode = "run" | "all";
+
+function ReportsPanel({
+  runId,
+  active,
+}: {
+  runId: string;
+  active: boolean;
+}) {
+  const [mode, setMode] =
+    useState<ReportsMode>("run");
+
   const [reports, setReports] =
     useState<Report[] | null>(null);
 
   const [selected, setSelected] =
-    useState<string | null>(null);
+    useState<Report | null>(null);
 
   const [content, setContent] =
     useState<string | null>(null);
@@ -1163,48 +1183,147 @@ function ReportsPanel() {
     useState<string | null>(null);
 
   // ------------------------------------------------------------
-  // Load report list
+  // Report list: load once, then poll while the run is active
   // ------------------------------------------------------------
 
   useEffect(() => {
     let disposed = false;
 
-    getReports()
-      .then((list) => {
-        if (disposed) {
-          return;
-        }
-        setReports(list);
-      })
-      .catch((err) => {
-        if (disposed) {
-          return;
-        }
-        setError(String(err));
-      });
+    setReports(null);
+    setSelected(null);
+    setContent(null);
+    setError(null);
+
+    const load = () => {
+      const loader =
+        mode === "run"
+          ? getRunReports(runId)
+          : getAllReports();
+
+      loader
+        .then((list) => {
+          if (disposed) {
+            return;
+          }
+          setReports(list);
+        })
+        .catch((err) => {
+          if (disposed) {
+            return;
+          }
+          setError(String(err));
+        });
+    };
+
+    load();
+
+    if (!active) {
+      return () => {
+        disposed = true;
+      };
+    }
+
+    const timer =
+      window.setInterval(
+        load,
+        3000,
+      );
 
     return () => {
       disposed = true;
+      window.clearInterval(
+        timer,
+      );
     };
-  }, []);
+  }, [mode, runId, active]);
+
+  // ------------------------------------------------------------
+  // Selected report content: load once, then poll while active
+  // ------------------------------------------------------------
+
+  useEffect(() => {
+    if (!selected) {
+      return;
+    }
+
+    let disposed = false;
+
+    setContent(null);
+    setError(null);
+
+    const load = () => {
+      getRunReport(
+        selected.runId,
+        selected.name,
+      )
+        .then((text) => {
+          if (disposed) {
+            return;
+          }
+          setContent(text);
+        })
+        .catch((err) => {
+          if (disposed) {
+            return;
+          }
+          setError(String(err));
+        });
+    };
+
+    load();
+
+    if (!active) {
+      return () => {
+        disposed = true;
+      };
+    }
+
+    const timer =
+      window.setInterval(
+        load,
+        3000,
+      );
+
+    return () => {
+      disposed = true;
+      window.clearInterval(
+        timer,
+      );
+    };
+  }, [
+    selected?.runId,
+    selected?.name,
+    active,
+  ]);
 
   // ------------------------------------------------------------
   // Open a report
   // ------------------------------------------------------------
 
-  async function open(name: string) {
-    setSelected(name);
-    setContent(null);
-    setError(null);
-
-    try {
-      setContent(
-        await getReport(name),
-      );
-    } catch (err) {
-      setError(String(err));
-    }
+  function open(report: Report) {
+    setSelected(report);
   }
+
+  // Group all-run reports by run ID.
+  const grouped = useMemo(() => {
+    if (mode !== "all" || !reports) {
+      return [];
+    }
+
+    const byRun = new Map<
+      string,
+      Report[]
+    >();
+
+    for (const report of reports) {
+      const list =
+        byRun.get(report.runId) ?? [];
+      list.push(report);
+      byRun.set(report.runId, list);
+    }
+
+    return [...byRun.entries()];
+  }, [mode, reports]);
 
   return (
     <section className="panel">
@@ -1221,38 +1340,112 @@ function ReportsPanel() {
             Reports
           </h2>
 
-          <span>
-            {reports?.length ?? 0}
+          <span className="reports-toggle">
+            <button
+              type="button"
+              className={
+                mode === "run"
+                  ? "reports-toggle-active"
+                  : ""
+              }
+              onClick={() =>
+                setMode("run")
+              }
+            >
+              This run
+            </button>
+
+            <button
+              type="button"
+              className={
+                mode === "all"
+                  ? "reports-toggle-active"
+                  : ""
+              }
+              onClick={() =>
+                setMode("all")
+              }
+            >
+              All runs
+            </button>
           </span>
         </summary>
 
         <div className="reports">
           <div className="report-list">
-            {reports?.map((report) => (
-              <button
-                key={report.name}
-                type="button"
-                className={`report-row ${
-                  selected ===
-                  report.name
-                    ? "report-selected"
-                    : ""
-                }`}
-                onClick={() =>
-                  open(report.name)
-                }
-              >
-                <span className="report-name">
-                  {report.name}
-                </span>
+            {mode === "run" && (
+              <div className="reports-group">
+                {reports?.map((report) => (
+                  <button
+                    key={report.name}
+                    type="button"
+                    className={`report-row ${
+                      selected?.name ===
+                        report.name &&
+                      selected?.runId ===
+                        report.runId
+                        ? "report-selected"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      open(report)
+                    }
+                  >
+                    <span className="report-name">
+                      {report.name}
+                    </span>
 
-                <span className="report-meta">
-                  {formatBytes(
-                    report.size,
-                  )}
-                </span>
-              </button>
-            ))}
+                    <span className="report-meta">
+                      {formatBytes(
+                        report.size,
+                      )}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {mode === "all" &&
+              grouped.map(
+                ([runID, list]) => (
+                  <div
+                    key={runID}
+                    className="reports-group"
+                  >
+                    <div className="reports-run">
+                      {runID}
+                    </div>
+
+                    {list.map((report) => (
+                      <button
+                        key={report.name}
+                        type="button"
+                        className={`report-row ${
+                          selected?.name ===
+                            report.name &&
+                          selected?.runId ===
+                            report.runId
+                            ? "report-selected"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          open(report)
+                        }
+                      >
+                        <span className="report-name">
+                          {report.name}
+                        </span>
+
+                        <span className="report-meta">
+                          {formatBytes(
+                            report.size,
+                          )}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ),
+              )}
 
             {reports &&
               reports.length ===

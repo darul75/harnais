@@ -275,8 +275,8 @@ func proseTools(
 // ------------------------------------------------------------
 
 // WriteReport returns a function worker that saves the markdown in
-// state[stateKey] to workspace/reports/<name>.md and records the
-// saved path in state.
+// state[stateKey] to workspace/reports/<runID>/<name>.md and records
+// the saved path in state.
 func (s *Shared) WriteReport(
 	name string,
 	stateKey string,
@@ -308,9 +308,21 @@ func (s *Shared) WriteReport(
 				name += ".md"
 			}
 
+			executionContext, ok :=
+				graph.GetExecutionContext(
+					ctx,
+				)
+
+			if !ok {
+				return nil, fmt.Errorf(
+					"write_report: missing execution context",
+				)
+			}
+
 			relative :=
 				filepath.Join(
 					"reports",
+					executionContext.RunID,
 					name,
 				)
 

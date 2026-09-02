@@ -21,27 +21,37 @@ Reply with ONLY the outline. Do not write the full content.`
 const draftPrompt = `You are a content writer.
 
 The outline is available in the runtime state under "agent_output".
+The runtime state contains a "reports_dir" value with the directory
+for this run's reports.
 
 Write the full piece of content following the outline, as Markdown.
-Write it to reports/content-draft.md with the write_file tool.
+Write it to a file named "content-draft.md" inside the reports_dir
+directory with the write_file tool.
 
 Make it well-structured, clear, and useful. Include the title and
 headings from the outline.`
 
 const editorPrompt = `You are a %s editor.
 
-Read reports/content-draft.md with read_file.
-Edit the draft for %s.
-Write your edited version to %s with write_file, keeping the full
-document (do not summarize or truncate it).`
+The runtime state contains a "reports_dir" value with the directory
+for this run's reports.
+
+Read "content-draft.md" inside the reports_dir directory with
+read_file. Edit the draft for %s.
+Write your edited version to a file named "%s" inside the reports_dir
+directory with write_file, keeping the full document (do not summarize
+or truncate it).`
 
 const finalizerPrompt = `You are a content finalizer.
 
-Read these files:
-- reports/content-draft.md (the original draft)
-- reports/editor-tone.md
-- reports/editor-facts.md
-- reports/editor-clarity.md
+The runtime state contains a "reports_dir" value with the directory
+for this run's reports.
+
+Read these files inside the reports_dir directory:
+- content-draft.md (the original draft)
+- editor-tone.md
+- editor-facts.md
+- editor-clarity.md
 
 Merge the best of the draft and the editors' versions into ONE final
 document. Preserve the full content. Output the final document as
@@ -132,7 +142,7 @@ func ContentWorkflow(
 								editor.focus,
 								editor.detail,
 								fmt.Sprintf(
-									"reports/editor-%s.md",
+									"editor-%s.md",
 									editor.id,
 								),
 							),

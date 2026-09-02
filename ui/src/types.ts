@@ -202,6 +202,7 @@ export type SettingsTestResult = {
 };
 
 export type Report = {
+  runId: string;
   name: string;
   size: number;
   modified: string;

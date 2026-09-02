@@ -212,7 +212,29 @@ export async function testSettings(
   return result;
 }
 
-export async function getReports() {
+export async function getRunReports(
+  runId: string,
+) {
+  const response = await fetch(
+    `${API_BASE}/api/runs/${encodeURIComponent(runId)}/reports`,
+  );
+
+  if (!response.ok) {
+    throw new ApiError(
+      await response.text(),
+      response.status,
+    );
+  }
+
+  const payload =
+    (await response.json()) as {
+      reports: Report[];
+    };
+
+  return payload.reports;
+}
+
+export async function getAllReports() {
   const response = await fetch(
     `${API_BASE}/api/reports`,
   );
@@ -232,11 +254,12 @@ export async function getReports() {
   return payload.reports;
 }
 
-export async function getReport(
+export async function getRunReport(
+  runId: string,
   name: string,
 ) {
   const response = await fetch(
-    `${API_BASE}/api/reports/${encodeURIComponent(name)}`,
+    `${API_BASE}/api/runs/${encodeURIComponent(runId)}/reports/${encodeURIComponent(name)}`,
   );
 
   if (!response.ok) {

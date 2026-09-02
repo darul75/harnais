@@ -13,16 +13,18 @@ import (
 	"harnais/tools"
 )
 
-func newReportServer(t *testing.T) (*httptest.Server, *tools.Workspace) {
+func newReportServer(t *testing.T) (*httptest.Server, *tools.Workspace, *RunManager) {
 	t.Helper()
 
 	workspace := tools.NewWorkspace(
 		filepath.Join(t.TempDir(), "ws"),
 	)
 
+	runs := NewRunManager()
+
 	api := NewServer(
 		NewEventBus(),
-		NewRunManager(),
+		runs,
 		config.NewStore(
 			filepath.Join(t.TempDir(), "settings.json"),
 		),
@@ -42,17 +44,25 @@ func newReportServer(t *testing.T) (*httptest.Server, *tools.Workspace) {
 
 	t.Cleanup(server.Close)
 
-	return server, workspace
+	return server, workspace, runs
 }
 
-func TestListAndGetReports(t *testing.T) {
-
-	server, workspace :=
-		newReportServer(t)
+func writeReport(
+	t *testing.T,
+	workspace *tools.Workspace,
+	runID string,
+	name string,
+	content string,
+) {
+	t.Helper()
 
 	reportPath, err :=
 		workspace.Resolve(
-			"reports/test.md",
+			filepath.Join(
+				"reports",
+				runID,
+				name,
+			),
 		)
 
 	if err != nil {
@@ -71,21 +81,45 @@ func TestListAndGetReports(t *testing.T) {
 	if err :=
 		os.WriteFile(
 			reportPath,
-			[]byte("# Hello\n\nSome **markdown**."),
+			[]byte(content),
 			0o644,
 		); err != nil {
 
 		t.Fatalf("WriteFile: %v", err)
 	}
+}
 
+func TestListAndGetRunReports(t *testing.T) {
+
+	server, workspace, runs :=
+		newReportServer(t)
+
+	runID := "run-123"
+
+	runs.Add(
+		graph.NewRun(runID, nil, graph.State{}),
+		RunMeta{Task: "t"},
+	)
+
+	writeReport(
+		t,
+		workspace,
+		runID,
+		"test.md",
+		"# Hello\n\nSome **markdown**.",
+	)
+
+	// Run-scoped listing.
 	listResponse, err :=
 		http.Get(
 			server.URL +
-				"/api/reports",
+				"/api/runs/" +
+				runID +
+				"/reports",
 		)
 
 	if err != nil {
-		t.Fatalf("GET reports: %v", err)
+		t.Fatalf("GET run reports: %v", err)
 	}
 
 	defer listResponse.Body.Close()
@@ -119,17 +153,21 @@ func TestListAndGetReports(t *testing.T) {
 		)
 	}
 
-	if payload.Reports[0].Name != "test.md" {
+	if payload.Reports[0].RunID != runID ||
+		payload.Reports[0].Name != "test.md" {
 		t.Errorf(
-			"expected test.md, got %q",
-			payload.Reports[0].Name,
+			"unexpected report %+v",
+			payload.Reports[0],
 		)
 	}
 
+	// Report content.
 	contentResponse, err :=
 		http.Get(
 			server.URL +
-				"/api/reports/test.md",
+				"/api/runs/" +
+				runID +
+				"/reports/test.md",
 		)
 
 	if err != nil {
@@ -159,15 +197,126 @@ func TestListAndGetReports(t *testing.T) {
 	}
 }
 
-func TestGetReportNotFound(t *testing.T) {
+func TestListAllReportsGroupsByRun(t *testing.T) {
 
-	server, _ :=
+	server, workspace, runs :=
+		newReportServer(t)
+
+	for _, runID := range []string{"run-a", "run-b"} {
+
+		runs.Add(
+			graph.NewRun(runID, nil, graph.State{}),
+			RunMeta{Task: "t"},
+		)
+
+		writeReport(
+			t,
+			workspace,
+			runID,
+			"brief.md",
+			"# brief",
+		)
+	}
+
+	response, err :=
+		http.Get(
+			server.URL +
+				"/api/reports",
+		)
+
+	if err != nil {
+		t.Fatalf("GET all reports: %v", err)
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode !=
+		http.StatusOK {
+		t.Fatalf(
+			"expected 200, got %d",
+			response.StatusCode,
+		)
+	}
+
+	var payload struct {
+		Reports []reportInfo `json:"reports"`
+	}
+
+	if err :=
+		json.NewDecoder(
+			response.Body,
+		).Decode(
+			&payload,
+		); err != nil {
+
+		t.Fatalf("decode: %v", err)
+	}
+
+	if len(payload.Reports) != 2 {
+		t.Fatalf(
+			"expected 2 reports, got %d",
+			len(payload.Reports),
+		)
+	}
+
+	seen := map[string]bool{}
+
+	for _, report := range payload.Reports {
+		seen[report.RunID] = true
+	}
+
+	if !seen["run-a"] || !seen["run-b"] {
+		t.Errorf(
+			"expected both runs, got %v",
+			payload.Reports,
+		)
+	}
+}
+
+func TestRunReportsRequireExistingRun(t *testing.T) {
+
+	server, _, _ :=
 		newReportServer(t)
 
 	response, err :=
 		http.Get(
 			server.URL +
-				"/api/reports/nope.md",
+				"/api/runs/nope/reports",
+		)
+
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode !=
+		http.StatusNotFound {
+		t.Fatalf(
+			"expected 404, got %d",
+			response.StatusCode,
+		)
+	}
+}
+
+func TestGetRunReportNotFound(t *testing.T) {
+
+	server, _, runs :=
+		newReportServer(t)
+
+	runID := "run-404"
+
+	runs.Add(
+		graph.NewRun(runID, nil, graph.State{}),
+		RunMeta{Task: "t"},
+	)
+
+	response, err :=
+		http.Get(
+			server.URL +
+				"/api/runs/" +
+				runID +
+				"/reports/nope.md",
 		)
 
 	if err != nil {

@@ -25,7 +25,11 @@ const researchSubTopicPrompt = `You are a web researcher.
 Research the sub-topic provided under "subtopic_%d" in the runtime state.
 Use web search to gather accurate, up-to-date information.
 
-Write your findings to %q as Markdown.
+The runtime state contains a "reports_dir" value with the directory
+for this run's reports.
+
+Write your findings as Markdown to a file named "research-%d.md"
+inside the reports_dir directory, using the write_file tool.
 Structure the report with:
 - A short introduction
 - Key findings (bullet points with concrete facts)
@@ -35,10 +39,15 @@ Aim for 400-700 words. Do not invent facts or citations.`
 
 const researchSynthesizerPrompt = `You are a research synthesizer.
 
-Read the research reports at:
-- reports/research-1.md
-- reports/research-2.md
-- reports/research-3.md
+The runtime state contains a "reports_dir" value with the directory
+for this run's reports.
+
+Read the research reports named:
+- research-1.md
+- research-2.md
+- research-3.md
+
+inside the reports_dir directory.
 
 Merge them into ONE coherent briefing that answers the user's original
 request. Produce the briefing as Markdown with:
@@ -167,10 +176,7 @@ func ResearchWorkflow(
 							fmt.Sprintf(
 								researchSubTopicPrompt,
 								i-1,
-								fmt.Sprintf(
-									"reports/research-%d.md",
-									i,
-								),
+								i,
 							),
 						),
 					},

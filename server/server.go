@@ -153,12 +153,17 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc(
 		"GET /api/reports",
-		s.listReports,
+		s.listAllReports,
 	)
 
 	mux.HandleFunc(
-		"GET /api/reports/{name}",
-		s.getReport,
+		"GET /api/runs/{runID}/reports",
+		s.listRunReports,
+	)
+
+	mux.HandleFunc(
+		"GET /api/runs/{runID}/reports/{name}",
+		s.getRunReport,
 	)
 
 	mux.HandleFunc(
@@ -454,6 +459,8 @@ func (s *Server) testSettings(
 // ------------------------------------------------------------
 
 type reportInfo struct {
+	RunID string `json:"runId"`
+
 	Name string `json:"name"`
 
 	Size int64 `json:"size"`
@@ -462,10 +469,10 @@ type reportInfo struct {
 }
 
 // reportRoot is the directory (relative to the workspace) where
-// generated markdown reports are stored.
+// generated markdown reports are stored, one subdirectory per run.
 const reportRoot = "reports"
 
-func (s *Server) reportsDir() (string, error) {
+func (s *Server) reportsRoot() (string, error) {
 
 	if s.Workspace == nil {
 		return "", fmt.Errorf(
@@ -485,27 +492,75 @@ func (s *Server) reportsDir() (string, error) {
 	return resolved, nil
 }
 
-func (s *Server) listReports(
+func (s *Server) requireRun(
 	w http.ResponseWriter,
-	r *http.Request,
-) {
+	runID string,
+) bool {
 
-	dir, err :=
-		s.reportsDir()
+	if _, exists :=
+		s.Runs.Get(runID); !exists {
+
+		http.Error(
+			w,
+			"run not found",
+			http.StatusNotFound,
+		)
+
+		return false
+	}
+
+	return true
+}
+
+func (s *Server) resolveRunReport(
+	w http.ResponseWriter,
+	runID string,
+	name string,
+) (string, bool) {
+
+	if name == "" {
+		http.Error(
+			w,
+			"report name is required",
+			http.StatusBadRequest,
+		)
+
+		return "", false
+	}
+
+	resolved, err :=
+		s.Workspace.Resolve(
+			filepath.Join(
+				reportRoot,
+				runID,
+				name,
+			),
+		)
 
 	if err != nil {
 		http.Error(
 			w,
-			err.Error(),
-			http.StatusInternalServerError,
+			"invalid report path",
+			http.StatusBadRequest,
 		)
-		return
+
+		return "", false
 	}
+
+	return resolved, true
+}
+
+// collectReports walks a directory and returns the markdown files
+// inside it, tagged with the runID they belong to.
+func collectReports(
+	root string,
+	runID string,
+) []reportInfo {
 
 	var reports []reportInfo
 
 	_ = filepath.WalkDir(
-		dir,
+		root,
 		func(
 			path string,
 			entry os.DirEntry,
@@ -517,18 +572,10 @@ func (s *Server) listReports(
 				return nil
 			}
 
-			relative, relErr :=
-				filepath.Rel(
-					dir,
-					path,
-				)
-
-			if relErr != nil {
-				return nil
-			}
-
 			if !strings.HasSuffix(
-				strings.ToLower(relative),
+				strings.ToLower(
+					entry.Name(),
+				),
 				".md",
 			) {
 				return nil
@@ -541,10 +588,22 @@ func (s *Server) listReports(
 				return nil
 			}
 
+			relative, relErr :=
+				filepath.Rel(
+					root,
+					path,
+				)
+
+			if relErr != nil {
+				return nil
+			}
+
 			reports =
 				append(
 					reports,
 					reportInfo{
+						RunID: runID,
+
 						Name: relative,
 
 						Size: info.Size(),
@@ -556,6 +615,46 @@ func (s *Server) listReports(
 			return nil
 		},
 	)
+
+	return reports
+}
+
+// listRunReports lists the markdown reports for one run.
+func (s *Server) listRunReports(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	runID :=
+		r.PathValue("runID")
+
+	if !s.requireRun(w, runID) {
+		return
+	}
+
+	root, err :=
+		s.reportsRoot()
+
+	if err != nil {
+		http.Error(
+			w,
+			err.Error(),
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	dir :=
+		filepath.Join(
+			root,
+			runID,
+		)
+
+	reports :=
+		collectReports(
+			dir,
+			runID,
+		)
 
 	sort.Slice(
 		reports,
@@ -573,25 +672,14 @@ func (s *Server) listReports(
 	)
 }
 
-func (s *Server) getReport(
+// listAllReports lists every run's markdown reports, grouped by run.
+func (s *Server) listAllReports(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
 
-	name :=
-		r.PathValue("name")
-
-	if name == "" {
-		http.Error(
-			w,
-			"report name is required",
-			http.StatusBadRequest,
-		)
-		return
-	}
-
-	_, err :=
-		s.reportsDir()
+	root, err :=
+		s.reportsRoot()
 
 	if err != nil {
 		http.Error(
@@ -602,20 +690,97 @@ func (s *Server) getReport(
 		return
 	}
 
-	resolved, err :=
-		s.Workspace.Resolve(
-			filepath.Join(
-				reportRoot,
-				name,
-			),
-		)
+	var reports []reportInfo
+
+	entries, err :=
+		os.ReadDir(root)
 
 	if err != nil {
+		if os.IsNotExist(err) {
+			writeJSON(
+				w,
+				map[string]any{
+					"reports": []reportInfo{},
+				},
+			)
+			return
+		}
+
 		http.Error(
 			w,
-			"invalid report path",
-			http.StatusBadRequest,
+			err.Error(),
+			http.StatusInternalServerError,
 		)
+		return
+	}
+
+	for _, entry := range entries {
+
+		if !entry.IsDir() {
+			continue
+		}
+
+		reports =
+			append(
+				reports,
+				collectReports(
+					filepath.Join(
+						root,
+						entry.Name(),
+					),
+					entry.Name(),
+				)...,
+			)
+	}
+
+	sort.Slice(
+		reports,
+		func(i, j int) bool {
+
+			if reports[i].RunID !=
+				reports[j].RunID {
+
+				return reports[i].RunID <
+					reports[j].RunID
+			}
+
+			return reports[i].Name <
+				reports[j].Name
+		},
+	)
+
+	writeJSON(
+		w,
+		map[string]any{
+			"reports": reports,
+		},
+	)
+}
+
+// getRunReport returns a single run's report content.
+func (s *Server) getRunReport(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	runID :=
+		r.PathValue("runID")
+
+	if !s.requireRun(w, runID) {
+		return
+	}
+
+	name :=
+		r.PathValue("name")
+
+	resolved, ok :=
+		s.resolveRunReport(
+			w,
+			runID,
+			name,
+		)
+
+	if !ok {
 		return
 	}
 

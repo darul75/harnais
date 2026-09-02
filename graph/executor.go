@@ -163,6 +163,17 @@ func (e *Executor) run(
 
 	state := initial.Clone()
 
+	// Make the run context available to workers so they can write
+	// run-scoped artifacts (e.g. reports/<runID>/).
+	state["run_id"] =
+		run.ID
+
+	state["reports_dir"] =
+		fmt.Sprintf(
+			"reports/%s",
+			run.ID,
+		)
+
 	run.SetState(state)
 
 	e.emit(Event{
@@ -582,8 +593,6 @@ func (e *Executor) executeWave(
 		)
 
 	for _, node := range nodes {
-
-		node := node
 
 		wg.Add(1)
 
