@@ -23,6 +23,11 @@ export function buildColumnLayout(
     return [];
   }
 
+  const layeringEdges = forwardEdges(
+    nodes,
+    edges,
+  );
+
   const columns = new Map<string, number>();
 
   const indegree = new Map<string, number>();
@@ -31,7 +36,7 @@ export function buildColumnLayout(
     indegree.set(node.id, 0);
   }
 
-  for (const edge of edges) {
+  for (const edge of layeringEdges) {
     if (indegree.has(edge.to)) {
       indegree.set(
         edge.to,
@@ -53,7 +58,7 @@ export function buildColumnLayout(
 
     const currentColumn = columns.get(current) ?? 0;
 
-    for (const edge of edges) {
+    for (const edge of layeringEdges) {
       if (edge.from !== current) {
         continue;
       }
@@ -160,4 +165,63 @@ export function arrowPoints(
   const p3y = y2 - length * Math.sin(angle + 0.5);
 
   return `${p1x},${p1y} ${p2x},${p2y} ${x2},${y2} ${p3x},${p3y}`;
+}
+
+// forwardEdges returns the subset of edges that do not form a cycle,
+// detected with a DFS (white/gray/black) pass. Feedback edges (e.g.
+// retry loops back to the coder) are excluded so the column layout
+// stays a DAG and nodes do not end up scattered in array order.
+function forwardEdges(
+  nodes: { id: string }[],
+  edges: LayoutEdge[],
+): LayoutEdge[] {
+  const outgoing = new Map<string, string[]>();
+
+  for (const node of nodes) {
+    outgoing.set(node.id, []);
+  }
+
+  for (const edge of edges) {
+    const list = outgoing.get(edge.from) ?? [];
+
+    list.push(edge.to);
+
+    outgoing.set(edge.from, list);
+  }
+
+  const color = new Map<string, 0 | 1 | 2>();
+
+  for (const node of nodes) {
+    color.set(node.id, 0);
+  }
+
+  const backKeys = new Set<string>();
+
+  const visit = (id: string) => {
+    color.set(id, 1);
+
+    for (const next of outgoing.get(id) ?? []) {
+      const nextColor = color.get(next) ?? 0;
+
+      if (nextColor === 0) {
+        visit(next);
+      } else if (nextColor === 1) {
+        backKeys.add(`${id}\u0000${next}`);
+      }
+    }
+
+    color.set(id, 2);
+  };
+
+  for (const node of nodes) {
+    if ((color.get(node.id) ?? 0) === 0) {
+      visit(node.id);
+    }
+  }
+
+  return edges.filter((edge) => {
+    return !backKeys.has(
+      `${edge.from}\u0000${edge.to}`,
+    );
+  });
 }

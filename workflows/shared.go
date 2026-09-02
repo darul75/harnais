@@ -454,35 +454,90 @@ func (s *Shared) WriteReport(
 // Tester
 // ------------------------------------------------------------
 
-// testCommands returns the auto-detected test command for the
-// workspace root: go.mod selects "go test ./...", package.json
-// selects the npm/pnpm/yarn test script. Returns nil when no
-// project test command is detected.
-func (s *Shared) testCommand() (string, []string) {
+// summarizeTestOutput counts the per-test PASS/FAIL lines in a
+// `go test -v` run and returns a one-line summary, or "" when no
+// tests ran.
+func summarizeTestOutput(
+	output string,
+) string {
+
+	passed :=
+		strings.Count(
+			output,
+			"--- PASS:",
+		)
+
+	failed :=
+		strings.Count(
+			output,
+			"--- FAIL:",
+		)
+
+	if passed+failed == 0 {
+		return ""
+	}
+
+	return fmt.Sprintf(
+		"[summary] %d tests: %d passed, %d failed",
+		passed+failed,
+		passed,
+		failed,
+	)
+}
+
+// testCommand auto-detects the project test command by checking the
+// workspace root and its immediate parent for go.mod or package.json:
+// go.mod selects "go test ./...", package.json selects "npm test".
+// It returns the program, its arguments, and the directory the
+// command should run in. Go tests always run from the workspace root
+// so only the workspace package is tested, never the parent module's
+// own suite. Returns empty program when no project test command is
+// detected.
+func (s *Shared) testCommand() (string, []string, string) {
 
 	root :=
 		s.workspace.Root
 
-	if _, err :=
-		os.Stat(
-			filepath.Join(root, "go.mod"),
-		); err == nil {
+	dirs :=
+		[]string{root}
 
-		return "go", []string{
-			"test",
-			"./...",
+	if parent :=
+		filepath.Dir(root); parent != root {
+
+		dirs =
+			append(
+				dirs,
+				parent,
+			)
+	}
+
+	for _, dir := range dirs {
+
+		if _, err :=
+			os.Stat(
+				filepath.Join(dir, "go.mod"),
+			); err == nil {
+
+			return "go", []string{
+				"test",
+				"-v",
+				"./...",
+			}, root
 		}
 	}
 
-	if _, err :=
-		os.Stat(
-			filepath.Join(root, "package.json"),
-		); err == nil {
+	for _, dir := range dirs {
 
-		return "npm", []string{"test"}
+		if _, err :=
+			os.Stat(
+				filepath.Join(dir, "package.json"),
+			); err == nil {
+
+			return "npm", []string{"test"}, dir
+		}
 	}
 
-	return "", nil
+	return "", nil, ""
 }
 
 // Tester returns a deterministic worker that runs the project's
@@ -509,7 +564,7 @@ func (s *Shared) Tester() *graph.FuncWorker {
 
 			attempt++
 
-			program, args :=
+			program, args, dir :=
 				s.testCommand()
 
 			if program == "" {
@@ -542,13 +597,24 @@ func (s *Shared) Tester() *graph.FuncWorker {
 				)
 
 			cmd.Dir =
-				s.workspace.Root
+				dir
 
 			output, err :=
 				cmd.CombinedOutput()
 
 			passed :=
 				err == nil
+
+			text :=
+				string(output)
+
+			summary :=
+				summarizeTestOutput(text)
+
+			if summary != "" {
+				text =
+					summary + "\n" + text
+			}
 
 			if passed {
 
@@ -568,7 +634,7 @@ func (s *Shared) Tester() *graph.FuncWorker {
 
 				"test_attempts": attempt,
 
-				"test_output": string(output),
+				"test_output": text,
 			}, nil
 		},
 	)
