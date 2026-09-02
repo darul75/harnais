@@ -107,6 +107,13 @@ func (s *Selector) keywordMatch(
 			continue
 		}
 
+		// Manual-only workflows (e.g. PDF upload) are never
+		// auto-selected; they require explicit sidebar choice.
+
+		if workflow.ManualOnly {
+			continue
+		}
+
 		score :=
 			s.scoreWorkflow(
 				workflow,
@@ -203,6 +210,11 @@ func (s *Selector) llmMatch(
 	)
 
 	for _, workflow := range s.registry.All() {
+
+		// Manual-only workflows cannot be auto-selected.
+		if workflow.ManualOnly {
+			continue
+		}
 
 		fmt.Fprintf(
 			&builder,

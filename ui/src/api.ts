@@ -24,6 +24,7 @@ const API_BASE =
 export async function createRun(
   task: string,
   workflowId?: string,
+  pdfPath?: string,
 ) {
   const response = await fetch(
     `${API_BASE}/api/runs`,
@@ -35,6 +36,7 @@ export async function createRun(
       body: JSON.stringify({
         task,
         workflowId,
+        pdfPath,
       }),
     },
   );
@@ -48,6 +50,32 @@ export async function createRun(
   return (await response.json()) as {
     runId: string;
     task: string;
+  };
+}
+
+export async function uploadPdf(
+  file: File,
+) {
+  const form = new FormData();
+
+  form.append("file", file);
+
+  const response = await fetch(
+    `${API_BASE}/api/upload`,
+    {
+      method: "POST",
+      body: form,
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await response.text(),
+    );
+  }
+
+  return (await response.json()) as {
+    path: string;
   };
 }
 

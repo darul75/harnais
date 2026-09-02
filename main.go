@@ -141,13 +141,21 @@ func main() {
 				g :=
 					workflow.Build()
 
+				initial :=
+					graph.State{
+						"task": request.Task,
+					}
+
+				if request.PDFPath != "" {
+					initial["pdf_path"] =
+						request.PDFPath
+				}
+
 				run :=
 					executor.Start(
 						context.Background(),
 						g,
-						graph.State{
-							"task": request.Task,
-						},
+						initial,
 					)
 
 				runManager.Add(

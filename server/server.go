@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"os"
@@ -21,6 +22,10 @@ type StartRunRequest struct {
 	Task string
 
 	WorkflowID string
+
+	// PDFPath is a workspace-relative path to an uploaded PDF to
+	// process (used by the PDF summary workflow).
+	PDFPath string
 }
 
 type StartRunFunc func(
@@ -120,6 +125,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(
 		"POST /api/runs",
 		s.createRun,
+	)
+
+	mux.HandleFunc(
+		"POST /api/upload",
+		s.uploadFile,
 	)
 
 	mux.HandleFunc(
@@ -244,6 +254,7 @@ func (s *Server) createRun(
 	var request struct {
 		Task       string `json:"task"`
 		WorkflowID string `json:"workflowId"`
+		PDFPath    string `json:"pdfPath"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -274,6 +285,7 @@ func (s *Server) createRun(
 		StartRunRequest{
 			Task:       request.Task,
 			WorkflowID: request.WorkflowID,
+			PDFPath:    request.PDFPath,
 		},
 	)
 
@@ -282,6 +294,142 @@ func (s *Server) createRun(
 		map[string]any{
 			"runId": run.ID,
 			"task":  request.Task,
+		},
+	)
+}
+
+// maxUploadBytes caps uploaded file sizes (e.g. PDFs).
+const maxUploadBytes = 25 << 20 // 25 MB
+
+// uploadFile accepts a multipart file upload, saves it under the
+// workspace uploads/ directory, and returns its workspace-relative
+// path so a run can reference it.
+func (s *Server) uploadFile(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	if s.Workspace == nil {
+		http.Error(
+			w,
+			"workspace not configured",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(
+		w,
+		r.Body,
+		maxUploadBytes,
+	)
+
+	if err :=
+		r.ParseMultipartForm(
+			maxUploadBytes,
+		); err != nil {
+		http.Error(
+			w,
+			"failed to parse upload: "+err.Error(),
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	file, header, err :=
+		r.FormFile("file")
+
+	if err != nil {
+		http.Error(
+			w,
+			"missing file field",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	defer file.Close()
+
+	if !strings.HasSuffix(
+		strings.ToLower(header.Filename),
+		".pdf",
+	) {
+		http.Error(
+			w,
+			"only .pdf files are supported",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	name :=
+		filepath.Base(header.Filename)
+
+	if name == "." ||
+		name == "/" ||
+		name == "" {
+		name = "upload.pdf"
+	}
+
+	relative :=
+		filepath.Join(
+			"uploads",
+			name,
+		)
+
+	resolved, err :=
+		s.Workspace.Resolve(relative)
+
+	if err != nil {
+		http.Error(
+			w,
+			err.Error(),
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	if err :=
+		os.MkdirAll(
+			filepath.Dir(resolved),
+			0o755,
+		); err != nil {
+		http.Error(
+			w,
+			err.Error(),
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	dst, err :=
+		os.Create(resolved)
+
+	if err != nil {
+		http.Error(
+			w,
+			err.Error(),
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	defer dst.Close()
+
+	if _, err :=
+		io.Copy(dst, file); err != nil {
+		http.Error(
+			w,
+			err.Error(),
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	writeJSON(
+		w,
+		map[string]any{
+			"path": relative,
 		},
 	)
 }

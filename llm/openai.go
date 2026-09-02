@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"harnais/agent"
@@ -522,7 +524,9 @@ func resultText(
 ) string {
 
 	if result.OutputText != "" {
-		return result.OutputText
+		return cleanSearchArtifacts(
+			result.OutputText,
+		)
 	}
 
 	var text string
@@ -545,5 +549,80 @@ func resultText(
 		}
 	}
 
-	return text
+	return cleanSearchArtifacts(text)
+}
+
+// searchArtifactRE matches the citation annotation tokens the
+// web_search tool leaves in model output: unbracketed or bracketed
+// "turn<turn><type><index>" markers such as turn1search8,
+// turn1academia13, [urn0search1], and [turn0search0].
+var searchArtifactRE = regexp.MustCompile(
+	`\[?(?:t)?urn\d+[a-z]+\d+\]?`,
+)
+
+// cleanSearchArtifacts strips search-citation annotation artifacts
+// the web-search LLM copies into its prose: citation tokens
+// (e.g. "turn1search8", "turn1academia13", "[urn0search1]"), their
+// "cite" labels (with any invisible characters interleaved), stray
+// zero-width/invisible unicode characters, and full-width
+// parentheses that wrap citation labels.
+func cleanSearchArtifacts(
+	value string,
+) string {
+
+	value =
+		searchArtifactRE.ReplaceAllString(
+			value,
+			"",
+		)
+
+	// "cite" labels preceding citation tokens, case-insensitively,
+	// with optional invisible characters between letters.
+	value =
+		regexp.MustCompile(
+			`c\s*i\s*t\s*e`,
+		).ReplaceAllString(
+			value,
+			"",
+		)
+
+	// Leftover zero-width / invisible unicode characters and
+	// full-width parentheses used to wrap citation labels.
+	var builder strings.Builder
+
+	for _, r := range value {
+
+		if r == '\u200B' ||
+			r == '\u200C' ||
+			r == '\u200D' ||
+			r == '\u200E' ||
+			r == '\u200F' ||
+			r == '\u2060' ||
+			r == '\u2061' ||
+			r == '\u2062' ||
+			r == '\u2063' ||
+			r == '\u2064' ||
+			r == '\uFEFF' ||
+			r == '\u00AD' ||
+			r == '\u061C' ||
+			r == '\u115F' ||
+			r == '\u1160' ||
+			r == '\u17B4' ||
+			r == '\u17B5' ||
+			r == '\u180E' ||
+			r == '\uFFF9' ||
+			r == '\uFFFA' ||
+			r == '\uFFFB' {
+			continue
+		}
+
+		if r == '\uFF08' ||
+			r == '\uFF09' {
+			continue
+		}
+
+		builder.WriteRune(r)
+	}
+
+	return builder.String()
 }

@@ -120,6 +120,7 @@ func TestRegistryIncludesResearchAndContent(t *testing.T) {
 	for _, id := range []string{
 		ResearchWorkflowID,
 		ContentWorkflowID,
+		PDFWorkflowID,
 	} {
 
 		if _, ok :=
@@ -130,6 +131,44 @@ func TestRegistryIncludesResearchAndContent(t *testing.T) {
 				id,
 			)
 		}
+	}
+}
+
+func TestSelectPDFManualOnly(t *testing.T) {
+	registry := testRegistry(t)
+	selector := NewSelector(registry, nil)
+
+	workflow, err := selector.Select(
+		context.Background(),
+		"summarize the uploaded pdf document",
+		"",
+	)
+
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+
+	if workflow.ID == PDFWorkflowID {
+		t.Errorf("pdf workflow must not be auto-selected (manual only), got %s", workflow.ID)
+	}
+}
+
+func TestSelectPDFExplicit(t *testing.T) {
+	registry := testRegistry(t)
+	selector := NewSelector(registry, nil)
+
+	workflow, err := selector.Select(
+		context.Background(),
+		"anything",
+		PDFWorkflowID,
+	)
+
+	if err != nil {
+		t.Fatalf("Select: %v", err)
+	}
+
+	if workflow.ID != PDFWorkflowID {
+		t.Errorf("expected %s, got %s", PDFWorkflowID, workflow.ID)
 	}
 }
 

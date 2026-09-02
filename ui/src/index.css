@@ -114,6 +114,56 @@ button {
   color: #6b7280;
 }
 
+.pdf-upload {
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+
+  max-width: 760px;
+
+  margin-bottom: 12px;
+
+  padding: 12px 16px;
+
+  border: 1px dashed #4b5563;
+
+  border-radius: 14px;
+
+  cursor: pointer;
+
+  color: #9ca3af;
+
+  background: #0f172a;
+
+  font-size: 13px;
+}
+
+.pdf-upload:hover {
+  border-color: #60a5fa;
+}
+
+.pdf-upload input[type="file"] {
+  display: none;
+}
+
+.pdf-upload-label {
+  flex: 1;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+}
+
+.pdf-upload::before {
+  content: "\1F4C4";
+
+  font-size: 16px;
+}
+
 .task-input:focus {
   outline: none;
 

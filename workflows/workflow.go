@@ -19,6 +19,11 @@ type Workflow struct {
 	// Matches are case-insensitive against the user request.
 	Keywords []string
 
+	// ManualOnly workflows are never chosen automatically by keyword
+	// matching or LLM classification; they run only when explicitly
+	// selected in the sidebar.
+	ManualOnly bool
+
 	// Build returns a fresh graph for each run.
 	Build func() *graph.Graph
 }

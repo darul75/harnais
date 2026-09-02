@@ -9,6 +9,7 @@ import {
   ApiError,
   createRun,
   getWorkflow,
+  uploadPdf,
 } from "./api";
 
 import type {
@@ -54,6 +55,9 @@ export function WorkflowView({
 
   const [starting, setStarting] =
     useState(false);
+
+  const [pdfFile, setPdfFile] =
+    useState<File | null>(null);
 
   const [selectedNodeId, setSelectedNodeId] =
     useState<string | null>(null);
@@ -108,10 +112,17 @@ export function WorkflowView({
   ) {
     event.preventDefault();
 
+    const isPDF =
+      workflow?.id === "pdf";
+
     const value =
       task.trim();
 
-    if (!value || starting) {
+    if (
+      (isPDF && !pdfFile) ||
+      (!isPDF && !value) ||
+      starting
+    ) {
       return;
     }
 
@@ -119,10 +130,23 @@ export function WorkflowView({
       setStarting(true);
       setError(null);
 
+      let pdfPath: string | undefined;
+
+      if (isPDF && pdfFile) {
+        const uploaded =
+          await uploadPdf(pdfFile);
+
+        pdfPath = uploaded.path;
+      }
+
       const result =
         await createRun(
-          value,
+          isPDF
+            ? value ||
+                `Summarize the uploaded PDF (${pdfFile?.name ?? ""})`
+            : value,
           workflowId,
+          pdfPath,
         );
 
       onRunStarted(
@@ -452,6 +476,28 @@ export function WorkflowView({
           className="start-form"
           onSubmit={handleStart}
         >
+          {workflow.id === "pdf" && (
+            <label className="pdf-upload">
+              <span className="pdf-upload-label">
+                {pdfFile
+                  ? pdfFile.name
+                  : "Choose a PDF to summarize"}
+              </span>
+
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(event) =>
+                  setPdfFile(
+                    event.target.files?.[0] ??
+                      null,
+                  )
+                }
+                disabled={starting}
+              />
+            </label>
+          )}
+
           <textarea
             className="task-input"
             value={task}
@@ -470,7 +516,11 @@ export function WorkflowView({
                 event.currentTarget.form?.requestSubmit();
               }
             }}
-            placeholder="Describe the feature, fix, or question..."
+            placeholder={
+              workflow.id === "pdf"
+                ? "Optional instructions for the summary..."
+                : "Describe the feature, fix, or question..."
+            }
             disabled={starting}
           />
 
@@ -479,12 +529,16 @@ export function WorkflowView({
             className="start-button"
             disabled={
               starting ||
-              !task.trim()
+              (workflow.id === "pdf"
+                ? !pdfFile
+                : !task.trim())
             }
           >
             {starting
               ? "Starting..."
-              : "Start Run"}
+              : workflow.id === "pdf"
+                ? "Summarize PDF"
+                : "Start Run"}
           </button>
         </form>
       </section>

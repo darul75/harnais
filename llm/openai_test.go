@@ -85,3 +85,50 @@ func TestResultTextEmpty(t *testing.T) {
 		t.Errorf("expected empty text, got %q", got)
 	}
 }
+
+func TestCleanSearchArtifacts(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "unbracketed turn1 search token",
+			input: "CNNs are parameter-efficient. (Stanford CS231n). turn1search8",
+			want:  "CNNs are parameter-efficient. (Stanford CS231n). ",
+		},
+		{
+			name:  "unbracketed turn1 academia token",
+			input: "ResNets underpin vision backbones. turn1academia13",
+			want:  "ResNets underpin vision backbones. ",
+		},
+		{
+			name:  "bracketed tokens",
+			input: "See [urn0search1] and [turn0search0] for details.",
+			want:  "See  and  for details.",
+		},
+		{
+			name:  "cite label",
+			input: "Findings cite（ source ）turn1search2 here.",
+			want:  "Findings  source  here.",
+		},
+		{
+			name:  "zero-width characters",
+			input: "Lead\u200Bing\u200B edge",
+			want:  "Leading edge",
+		},
+		{
+			name:  "clean text unchanged",
+			input: "A normal sentence with (parens) and numbers 123.",
+			want:  "A normal sentence with (parens) and numbers 123.",
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			if got := cleanSearchArtifacts(test.input); got != test.want {
+				t.Errorf("cleanSearchArtifacts(%q) = %q, want %q", test.input, got, test.want)
+			}
+		})
+	}
+}

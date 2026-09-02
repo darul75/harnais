@@ -1919,10 +1919,11 @@ const INVISIBLE_CHARS =
   /[\u200B-\u200F\u2060-\u206F\uFEFF\u00AD\u061C\u115F\u1160\u17B4\u17B5\u180E\uFFF9-\uFFFB]/g;
 
 // cleanMarkdownContent strips artifacts the web-search LLM copies
-// into its prose before rendering: Turn0-style citation tokens
-// (e.g. "[urn0search1]"), their "cite" labels (with any invisible
-// characters interleaved), and stray invisible/zero-width unicode
-// characters. Raw reports on disk are left untouched.
+// into its prose before rendering: citation tokens (e.g.
+// "turn1search8", "turn1academia13", "[urn0search1]"), their "cite"
+// labels (with any invisible characters interleaved), stray
+// invisible/zero-width unicode characters, and full-width
+// parentheses. Raw reports on disk are left untouched.
 function cleanMarkdownContent(
   markdown: string,
 ): string {
@@ -1934,9 +1935,15 @@ function cleanMarkdownContent(
         /c\s*i\s*t\s*e/gi,
         "",
       )
-      // Turn0-style citation clusters: [turn0search0], [urn0search1], ...
+      // Citation annotation tokens, bracketed or not:
+      // turn1search8, turn1academia13, [urn0search1], [turn0search0].
       .replace(
-        /\[(?:t)?urn\d*search\d+\]/g,
+        /\[?t?urn\d+[a-z]+\d+\]?/gi,
+        "",
+      )
+      // Full-width parentheses used to wrap citation labels.
+      .replace(
+        /[\uFF08\uFF09]/g,
         "",
       )
       // Leftover zero-width / invisible unicode characters.

@@ -28,6 +28,8 @@ func Register(
 
 		ContentWorkflow(s),
 
+		PDFWorkflow(s),
+
 		SecurityAuditWorkflow(s),
 
 		RefactorWorkflow(s),
