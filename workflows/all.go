@@ -33,5 +33,7 @@ func Register(
 		RefactorWorkflow(s),
 
 		TTSWorkflow(s),
+
+		GmailWorkflow(s),
 	)
 }

@@ -5,7 +5,7 @@ import (
 
 	"harnais/agent"
 	"harnais/graph"
-	"harnais/opencode"
+	"harnais/workflows/opencode"
 )
 
 // NodeKind classifies the worker behind a graph node.

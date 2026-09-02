@@ -3,6 +3,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"sync"
 
 	"harnais/agent"
+	"harnais/tools/imapmail"
 	"harnais/llm"
 )
 
@@ -135,6 +137,61 @@ var providers = []Provider{
 					"opencode/gemini-3-flash",
 					"opencode/claude-haiku-4-5",
 				},
+			},
+		},
+	},
+
+	{
+		ID:    "gmail",
+		Label: "Gmail",
+		Fields: []Field{
+			{
+				Key:         "email",
+				Label:       "Email",
+				Type:        FieldString,
+				Placeholder: "you@gmail.com",
+				EnvVar:      "GMAIL_EMAIL",
+			},
+
+			{
+				Key:         "appPassword",
+				Label:       "App Password",
+				Type:        FieldSecret,
+				Placeholder: "16-character app password",
+				EnvVar:      "GMAIL_APP_PASSWORD",
+				Secret:      true,
+			},
+
+			{
+				Key:         "host",
+				Label:       "IMAP Host",
+				Type:        FieldString,
+				Placeholder: "imap.gmail.com",
+				EnvVar:      "GMAIL_HOST",
+			},
+
+			{
+				Key:         "port",
+				Label:       "IMAP Port",
+				Type:        FieldString,
+				Placeholder: "993",
+				EnvVar:      "GMAIL_PORT",
+			},
+
+			{
+				Key:         "mailbox",
+				Label:       "Mailbox",
+				Type:        FieldString,
+				Placeholder: "INBOX",
+				EnvVar:      "GMAIL_MAILBOX",
+			},
+
+			{
+				Key:         "daysBack",
+				Label:       "Days Back",
+				Type:        FieldString,
+				Placeholder: "1",
+				EnvVar:      "GMAIL_DAYS_BACK",
 			},
 		},
 	},
@@ -533,6 +590,17 @@ func Test(
 	case "opencode":
 		return testOpenCodeModel(
 			values["model"],
+		)
+
+	case "gmail":
+		return imapmail.Check(
+			context.Background(),
+			imapmail.Config{
+				Email:       values["email"],
+				AppPassword: values["appPassword"],
+				Host:        values["host"],
+				Port:        values["port"],
+			},
 		)
 
 	default:

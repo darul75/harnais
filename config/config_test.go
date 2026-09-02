@@ -28,8 +28,8 @@ func TestStoreUpdateAndView(t *testing.T) {
 
 	view := store.View()
 
-	if len(view.Providers) != 2 {
-		t.Fatalf("expected 2 providers, got %d", len(view.Providers))
+	if len(view.Providers) != 3 {
+		t.Fatalf("expected 3 providers, got %d", len(view.Providers))
 	}
 
 	openai := view.Providers[0]

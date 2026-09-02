@@ -81,9 +81,9 @@ func TestGetSettings(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	if len(view.Providers) != 2 {
+	if len(view.Providers) != 3 {
 		t.Fatalf(
-			"expected 2 providers, got %d",
+			"expected 3 providers, got %d",
 			len(view.Providers),
 		)
 	}

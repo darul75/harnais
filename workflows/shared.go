@@ -12,7 +12,7 @@ import (
 	"harnais/config"
 	"harnais/graph"
 	"harnais/llm"
-	"harnais/opencode"
+	"harnais/workflows/opencode"
 	"harnais/tools"
 )
 

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"harnais/graph"
-	"harnais/opencode"
+	"harnais/workflows/opencode"
 )
 
 func TestDescribeOpenCodeCoder(t *testing.T) {
