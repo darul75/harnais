@@ -365,6 +365,7 @@ func (s *Store) persist() error {
 // SettingsView is the API payload exposing provider schema + values.
 type SettingsView struct {
 	Providers []ProviderView `json:"providers"`
+	Path      string         `json:"path"`
 }
 
 type ProviderView struct {
@@ -386,6 +387,8 @@ func (s *Store) View() SettingsView {
 	defer s.mu.RUnlock()
 
 	view := SettingsView{
+		Path: s.path,
+
 		Providers: make(
 			[]ProviderView,
 			0,

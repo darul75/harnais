@@ -183,12 +183,21 @@ export function SettingsView() {
 
         {settings &&
           configuredCount === 0 && (
-            <div className="settings-hint">
-              No providers configured yet.
-              Add your API keys below to
-              start running workflows.
-            </div>
-          )}
+        <div className="settings-hint">
+          No providers configured yet.
+          Add your API keys below to
+          start running workflows.
+        </div>
+      )}
+
+        {settings && (
+          <div className="settings-path">
+            Settings stored at:{" "}
+            <code>
+              {settings.path}
+            </code>
+          </div>
+        )}
 
         <div className="settings-providers">
           {settings?.providers.map(

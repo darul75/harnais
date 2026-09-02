@@ -32,8 +32,7 @@ button {
 }
 
 .app {
-  max-width: 1500px;
-  margin: 0 auto;
+  width: 100%;
   padding: 24px;
 }
 
@@ -496,40 +495,113 @@ button:disabled {
   stroke-width: 2;
 }
 
+.node-pending {
+  fill: #111827;
+
+  stroke: #6b7280;
+
+  opacity: 0.85;
+}
+
 .node-running {
   fill: #172554;
 
   stroke: #60a5fa;
+
+  stroke-width: 2.5;
+
+  filter: drop-shadow(0 0 6px rgba(96, 165, 250, 0.55));
+
+  animation: node-glow 1.6s ease-in-out infinite;
 }
 
 .node-completed {
   fill: #052e1b;
 
   stroke: #34d399;
+
+  stroke-width: 2.5;
 }
 
 .node-failed {
   fill: #450a0a;
 
   stroke: #f87171;
-}
 
-.node-pending {
-  stroke: #6b7280;
+  stroke-width: 2.5;
+
+  filter: drop-shadow(0 0 6px rgba(248, 113, 113, 0.4));
 }
 
 .node-title {
   fill: #f9fafb;
 
-  font-size: 16px;
+  font-size: 12px;
 
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .node-status {
   fill: #9ca3af;
 
-  font-size: 12px;
+  font-size: 11px;
+}
+
+@keyframes node-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 3px rgba(96, 165, 250, 0.4));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.85));
+  }
+}
+
+/* Edges */
+
+.graph-edge-line {
+  stroke: #4b5563;
+
+  stroke-width: 2;
+}
+
+.graph-edge-arrow {
+  fill: #6b7280;
+}
+
+.graph-edge-conditional .graph-edge-line {
+  stroke-dasharray: 6 5;
+}
+
+.graph-edge-taken .graph-edge-line {
+  stroke: #34d399;
+
+  stroke-width: 2.25;
+}
+
+.graph-edge-taken .graph-edge-arrow {
+  fill: #34d399;
+}
+
+.graph-edge-active .graph-edge-line {
+  stroke: #22d3ee;
+
+  stroke-width: 2.5;
+
+  stroke-dasharray: 10 7;
+
+  animation: edge-flow 0.7s linear infinite;
+}
+
+.graph-edge-active .graph-edge-arrow {
+  fill: #22d3ee;
+}
+
+@keyframes edge-flow {
+  to {
+    stroke-dashoffset: -17;
+  }
 }
 
 /* --------------------------------------------------------- */
@@ -1227,6 +1299,32 @@ pre {
   color: #fcd34d;
 
   font-size: 13px;
+}
+
+.settings-path {
+  margin: 8px 17px 0;
+
+  padding: 0 2px;
+
+  color: #9ca3af;
+
+  font-size: 12px;
+}
+
+.settings-path code {
+  padding: 2px 5px;
+
+  border-radius: 4px;
+
+  background: #1f2937;
+
+  color: #d1d5db;
+
+  font-family: monospace;
+
+  font-size: 12px;
+
+  word-break: break-all;
 }
 
 .settings-providers {

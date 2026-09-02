@@ -414,6 +414,7 @@ export function WorkflowView({
         {/* Node details */}
         {/* ------------------------------------------------ */}
 
+        {selectedNode && (
         <section className="panel">
           <div className="panel-header">
             <h2>
@@ -421,23 +422,15 @@ export function WorkflowView({
             </h2>
 
             <span>
-              {selectedNode
-                ? selectedNode.id
-                : "-"}
+              {selectedNode.id}
             </span>
           </div>
 
-          {selectedNode ? (
-            <NodeDetails
-              node={selectedNode}
-            />
-          ) : (
-            <div className="empty">
-              Select a node to
-              inspect it.
-            </div>
-          )}
+          <NodeDetails
+            node={selectedNode}
+          />
         </section>
+        )}
       </div>
 
       {/* ------------------------------------------------ */}

@@ -194,6 +194,7 @@ export type ProviderSettings = {
 
 export type Settings = {
   providers: ProviderSettings[];
+  path: string;
 };
 
 export type SettingsTestResult = {

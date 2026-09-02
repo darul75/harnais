@@ -19,6 +19,7 @@ import {
   getRunReport,
   getRunReports,
   getRunTree,
+  getWorkflow,
   getWorkflows,
 } from "./api";
 
@@ -36,6 +37,8 @@ import type {
   RuntimeEvent,
   ToolCall,
   Workflow,
+  WorkflowDetail,
+  WorkflowNode,
 } from "./types";
 
 import ReactMarkdown from "react-markdown";
@@ -44,12 +47,36 @@ import remarkGfm from "remark-gfm";
 import { WorkflowView } from "./WorkflowView";
 import { SettingsView } from "./SettingsView";
 
+import {
+  buildColumnLayout,
+} from "./graphLayout";
+
 type GraphLayoutNode = {
   id: string;
   x: number;
   y: number;
   nodeId: string;
   status: string;
+};
+
+type BlueprintGraphNode = {
+  id: string;
+  nodeId: string;
+  status: string;
+  kind: string;
+  joinAll: boolean;
+  x: number;
+  y: number;
+  executionId: string | null;
+};
+
+type BlueprintGraphEdge = {
+  id: string;
+  from: string;
+  to: string;
+  conditional: boolean;
+  active: boolean;
+  taken: boolean;
 };
 
 const EVENT_TYPES = [
@@ -87,6 +114,9 @@ function App() {
 
   const [tree, setTree] =
     useState<RunTree | null>(null);
+
+  const [workflowDetail, setWorkflowDetail] =
+    useState<WorkflowDetail | null>(null);
 
   const [events, setEvents] =
     useState<RuntimeEvent[]>([]);
@@ -174,6 +204,28 @@ function App() {
 
       setRun(currentRun);
       setTree(currentTree);
+
+      if (currentRun?.workflowId) {
+        try {
+          const detail =
+            await getWorkflow(
+              currentRun.workflowId,
+            );
+
+          setWorkflowDetail(
+            detail,
+          );
+        } catch (err) {
+          console.error(
+            "Failed to load workflow detail",
+            err,
+          );
+
+          setWorkflowDetail(null);
+        }
+      } else {
+        setWorkflowDetail(null);
+      }
 
       setSelectedExecutionId(
         (current) => {
@@ -276,6 +328,7 @@ function App() {
   function switchRun(id: string) {
     setRun(null);
     setTree(null);
+    setWorkflowDetail(null);
     setEvents([]);
     setSelectedExecutionId(null);
     setSelectedEventId(null);
@@ -286,6 +339,7 @@ function App() {
   function newRun() {
     setRun(null);
     setTree(null);
+    setWorkflowDetail(null);
     setEvents([]);
     setSelectedExecutionId(null);
     setSelectedEventId(null);
@@ -467,6 +521,19 @@ function App() {
       [executions, tree?.edges],
     );
 
+  const blueprintGraph =
+    useMemo(
+      () =>
+        buildBlueprintGraph(
+          workflowDetail,
+          tree,
+        ),
+      [workflowDetail, tree],
+    );
+
+  const showBlueprint =
+    blueprintGraph.nodes.length > 0;
+
   const selectedIndex =
     runs.findIndex(
       (summary) =>
@@ -484,6 +551,9 @@ function App() {
       runs.length - 1
       ? runs[selectedIndex + 1].id
       : null;
+
+  const isTTSWorkflow =
+    run?.workflowId === "tts";
 
   return (
     <div className="app">
@@ -582,6 +652,7 @@ function App() {
         {/* =================================================== */}
 
         <aside className="w-64 shrink-0 flex flex-col gap-5">
+          {runs.length > 0 && (
           <div className="panel">
             <div className="panel-header">
               <h2>
@@ -631,6 +702,7 @@ function App() {
               )}
             </div>
           </div>
+          )}
 
           <div className="panel">
             <div className="panel-header">
@@ -814,8 +886,9 @@ function App() {
             </div>
 
             <div className="graph-container">
-              {executions.length ===
-              0 ? (
+              {!showBlueprint &&
+              executions.length ===
+                0 ? (
                 <div className="empty">
                   Waiting for workflow
                   executions...
@@ -823,140 +896,279 @@ function App() {
               ) : (
                 <svg
                   className="graph-svg"
-                  viewBox={runViewBoxFor(
-                    graphLayout,
-                  )}
+                  viewBox={
+                    showBlueprint
+                      ? blueprintViewBoxFor(
+                          blueprintGraph.nodes,
+                        )
+                      : runViewBoxFor(
+                          graphLayout,
+                        )
+                  }
                   preserveAspectRatio="xMinYMin meet"
                 >
-                  {/* Edges */}
+                  {showBlueprint ? (
+                    <>
+                      {/* Blueprint edges */}
 
-                  {tree?.edges.map(
-                    (edge) => {
-                      const from =
-                        graphLayout.find(
-                          (node) =>
-                            node.id ===
-                            edge.fromExecutionId,
-                        );
+                      {blueprintGraph.edges.map(
+                        (edge) => {
+                          const from =
+                            blueprintGraph.nodes.find(
+                              (node) =>
+                                node.id ===
+                                edge.from,
+                            );
 
-                      const to =
-                        graphLayout.find(
-                          (node) =>
-                            node.id ===
-                            edge.toExecutionId,
-                        );
+                          const to =
+                            blueprintGraph.nodes.find(
+                              (node) =>
+                                node.id ===
+                                edge.to,
+                            );
 
-                      if (
-                        !from ||
-                        !to
-                      ) {
-                        return null;
-                      }
-
-                      return (
-                        <g
-                          key={edge.id}
-                        >
-                          <line
-                            x1={
-                              from.x +
-                              100
-                            }
-                            y1={
-                              from.y +
-                              32
-                            }
-                            x2={
-                              to.x
-                            }
-                            y2={
-                              to.y +
-                              32
-                            }
-                            stroke="#4b5563"
-                            strokeWidth="2"
-                          />
-
-                          <polygon
-                            points={arrowPoints(
-                              from.x +
-                                100,
-                              from.y +
-                                32,
-                              to.x,
-                              to.y +
-                                32,
-                            )}
-                            fill="#6b7280"
-                          />
-                        </g>
-                      );
-                    },
-                  )}
-
-                  {/* Execution nodes */}
-
-                  {graphLayout.map(
-                    (node) => {
-                      const selected =
-                        node.id ===
-                        selectedExecutionId;
-
-                      return (
-                        <g
-                          key={node.id}
-                          className={
-                            selected
-                              ? "graph-node-selected"
-                              : "graph-node"
+                          if (
+                            !from ||
+                            !to
+                          ) {
+                            return null;
                           }
-                          onClick={() =>
-                            setSelectedExecutionId(
-                              node.id,
-                            )
+
+                          const edgeClass = edge.active
+                            ? "graph-edge graph-edge-active"
+                            : edge.taken
+                              ? "graph-edge graph-edge-taken"
+                              : "graph-edge";
+
+                          const edgeMod =
+                            edge.conditional
+                              ? " graph-edge-conditional"
+                              : "";
+
+                          return (
+                            <g
+                              key={edge.id}
+                              className={`${edgeClass}${edgeMod}`}
+                            >
+                              <line
+                                className="graph-edge-line"
+                                x1={
+                                  from.x + 180
+                                }
+                                y1={
+                                  from.y + 36
+                                }
+                                x2={to.x}
+                                y2={
+                                  to.y + 36
+                                }
+                              />
+
+                              <polygon
+                                className="graph-edge-arrow"
+                                points={arrowPoints(
+                                  from.x + 180,
+                                  from.y + 36,
+                                  to.x,
+                                  to.y + 36,
+                                )}
+                              />
+                            </g>
+                          );
+                        },
+                      )}
+
+                      {/* Blueprint nodes */}
+
+                      {blueprintGraph.nodes.map(
+                        (node) => {
+                          const selected =
+                            node.executionId !=
+                              null &&
+                            node.executionId ===
+                              selectedExecutionId;
+
+                          return (
+                            <g
+                              key={node.id}
+                              className={
+                                selected
+                                  ? "graph-node graph-node-selected"
+                                  : "graph-node"
+                              }
+                              onClick={() => {
+                                if (
+                                  node.executionId
+                                ) {
+                                  setSelectedExecutionId(
+                                    node.executionId,
+                                  );
+                                }
+                              }}
+                            >
+                              <rect
+                                className={`node node-${node.status}`}
+                                x={node.x}
+                                y={node.y}
+                                width="180"
+                                height="72"
+                                rx="6"
+                              />
+
+                              <text
+                                className="node-title"
+                                x={
+                                  node.x + 90
+                                }
+                                y={
+                                  node.y + 30
+                                }
+                                textAnchor="middle"
+                              >
+                                {node.nodeId}
+                              </text>
+
+                              <text
+                                className="node-status"
+                                x={
+                                  node.x + 90
+                                }
+                                y={
+                                  node.y + 50
+                                }
+                                textAnchor="middle"
+                              >
+                                {node.status}
+                                {node.joinAll
+                                  ? " · join-all"
+                                  : ""}
+                              </text>
+                            </g>
+                          );
+                        },
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* Runtime edges */}
+
+                      {tree?.edges.map(
+                        (edge) => {
+                          const from =
+                            graphLayout.find(
+                              (node) =>
+                                node.id ===
+                                edge.fromExecutionId,
+                            );
+
+                          const to =
+                            graphLayout.find(
+                              (node) =>
+                                node.id ===
+                                edge.toExecutionId,
+                            );
+
+                          if (
+                            !from ||
+                            !to
+                          ) {
+                            return null;
                           }
-                        >
-                          <rect
-                            className={`node node-${node.status}`}
-                            x={node.x}
-                            y={node.y}
-                            width="100"
-                            height="64"
-                            rx="8"
-                          />
 
-                          <text
-                            className="node-title"
-                            x={
-                              node.x +
-                              50
-                            }
-                            y={
-                              node.y +
-                              27
-                            }
-                            textAnchor="middle"
-                          >
-                            {node.nodeId}
-                          </text>
+                          return (
+                            <g
+                              key={edge.id}
+                              className="graph-edge graph-edge-taken"
+                            >
+                              <line
+                                className="graph-edge-line"
+                                x1={
+                                  from.x + 100
+                                }
+                                y1={
+                                  from.y + 32
+                                }
+                                x2={to.x}
+                                y2={
+                                  to.y + 32
+                                }
+                              />
 
-                          <text
-                            className="node-status"
-                            x={
-                              node.x +
-                              50
-                            }
-                            y={
-                              node.y +
-                              47
-                            }
-                            textAnchor="middle"
-                          >
-                            {node.status}
-                          </text>
-                        </g>
-                      );
-                    },
+                              <polygon
+                                className="graph-edge-arrow"
+                                points={arrowPoints(
+                                  from.x + 100,
+                                  from.y + 32,
+                                  to.x,
+                                  to.y + 32,
+                                )}
+                              />
+                            </g>
+                          );
+                        },
+                      )}
+
+                      {/* Runtime nodes */}
+
+                      {graphLayout.map(
+                        (node) => {
+                          const selected =
+                            node.id ===
+                            selectedExecutionId;
+
+                          return (
+                            <g
+                              key={node.id}
+                              className={
+                                selected
+                                  ? "graph-node graph-node-selected"
+                                  : "graph-node"
+                              }
+                              onClick={() =>
+                                setSelectedExecutionId(
+                                  node.id,
+                                )
+                              }
+                            >
+                              <rect
+                                className={`node node-${node.status}`}
+                                x={node.x}
+                                y={node.y}
+                                width="100"
+                                height="64"
+                                rx="8"
+                              />
+
+                              <text
+                                className="node-title"
+                                x={
+                                  node.x + 50
+                                }
+                                y={
+                                  node.y + 27
+                                }
+                                textAnchor="middle"
+                              >
+                                {node.nodeId}
+                              </text>
+
+                              <text
+                                className="node-status"
+                                x={
+                                  node.x + 50
+                                }
+                                y={
+                                  node.y + 47
+                                }
+                                textAnchor="middle"
+                              >
+                                {node.status}
+                              </text>
+                            </g>
+                          );
+                        },
+                      )}
+                    </>
                   )}
                 </svg>
               )}
@@ -1110,25 +1322,29 @@ function App() {
             </details>
           </section>
 
-          <ReportsPanel
-            runId={run.id}
-            active={
-              run.status ===
-                "running" ||
-              run.status ===
-                "pending"
-            }
-          />
+          {!isTTSWorkflow && (
+            <ReportsPanel
+              runId={run.id}
+              active={
+                run.status ===
+                  "running" ||
+                run.status ===
+                  "pending"
+              }
+            />
+          )}
 
-          <AudioPanel
-            runId={run.id}
-            active={
-              run.status ===
-                "running" ||
-              run.status ===
-                "pending"
-            }
-          />
+          {isTTSWorkflow && (
+            <AudioPanel
+              runId={run.id}
+              active={
+                run.status ===
+                  "running" ||
+                run.status ===
+                  "pending"
+              }
+            />
+          )}
         </>
       )}
 
@@ -2756,6 +2972,181 @@ function RunStatus({
 // Graph layout
 // ============================================================
 
+function buildBlueprintGraph(
+  detail: WorkflowDetail | null,
+  tree: RunTree | null,
+): {
+  nodes: BlueprintGraphNode[];
+  edges: BlueprintGraphEdge[];
+} {
+  if (!detail) {
+    return {
+      nodes: [],
+      edges: [],
+    };
+  }
+
+  const nodesById = new Map<
+    string,
+    WorkflowNode
+  >();
+
+  for (const node of detail.nodes) {
+    nodesById.set(
+      node.id,
+      node,
+    );
+  }
+
+  const layout = buildColumnLayout(
+    detail.nodes,
+    detail.edges.map(
+      (edge) => ({
+        from: edge.from,
+        to: edge.to,
+      }),
+    ),
+  );
+
+  const executionsByNodeId =
+    new Map<
+      string,
+      ExecutionNode[]
+    >();
+
+  for (const execution of tree?.nodes ?? []) {
+    const list =
+      executionsByNodeId.get(
+        execution.nodeId,
+      ) ?? [];
+
+    list.push(execution);
+
+    executionsByNodeId.set(
+      execution.nodeId,
+      list,
+    );
+  }
+
+  const nodes: BlueprintGraphNode[] =
+    layout.map((item) => {
+      const def =
+        nodesById.get(
+          item.id,
+        );
+
+      const executions =
+        executionsByNodeId.get(
+          item.id,
+        ) ?? [];
+
+      const latest =
+        executions[
+          executions.length - 1
+        ] ?? null;
+
+      const running =
+        executions.find(
+          (execution) =>
+            execution.status ===
+            "running",
+        );
+
+      const status = running
+        ? "running"
+        : latest?.status ??
+          "pending";
+
+      return {
+        id: item.id,
+
+        nodeId: item.nodeId,
+
+        status,
+
+        kind: def?.kind ?? "worker",
+
+        joinAll:
+          def?.joinAll ?? false,
+
+        x: item.x,
+
+        y: item.y,
+
+        executionId:
+          running?.id ??
+          latest?.id ??
+          null,
+      };
+    });
+
+  const runningExecutionIds =
+    new Set<string>();
+
+  for (const execution of tree?.nodes ?? []) {
+    if (
+      execution.status ===
+      "running"
+    ) {
+      runningExecutionIds.add(
+        execution.id,
+      );
+    }
+  }
+
+  const takenEdgeKeys =
+    new Set<string>();
+
+  for (const edge of tree?.edges ?? []) {
+    takenEdgeKeys.add(
+      `${edge.fromNodeId}\u0000${edge.toNodeId}\u0000${edge.edgeId}`,
+    );
+  }
+
+  const edges: BlueprintGraphEdge[] =
+    detail.edges.map((edge) => {
+      const toExecution =
+        executionsByNodeId
+          .get(edge.to)
+          ?.find(
+            (execution) =>
+              runningExecutionIds.has(
+                execution.id,
+              ),
+          );
+
+      const taken =
+        [...takenEdgeKeys].some(
+          (key) =>
+            key.startsWith(
+              `${edge.from}\u0000${edge.to}\u0000`,
+            ),
+        );
+
+      return {
+        id: edge.id,
+
+        from: edge.from,
+
+        to: edge.to,
+
+        conditional:
+          edge.conditional ?? false,
+
+        active: Boolean(
+          toExecution,
+        ),
+
+        taken,
+      };
+    });
+
+  return {
+    nodes,
+    edges,
+  };
+}
+
 function buildGraphLayout(
   nodes: ExecutionNode[],
   edges: ExecutionEdge[],
@@ -2967,6 +3358,36 @@ function runViewBoxFor(
       ...nodes.map(
         (node) =>
           node.y + 64,
+      ),
+      240,
+    );
+
+  return `0 0 ${maxX + 20} ${maxY + 20}`;
+}
+
+// blueprintViewBoxFor fits the static workflow blueprint (nodes are
+// 180x72) so the whole graph is visible as soon as a run starts.
+function blueprintViewBoxFor(
+  nodes: BlueprintGraphNode[],
+) {
+  if (!nodes.length) {
+    return "0 0 900 240";
+  }
+
+  const maxX =
+    Math.max(
+      ...nodes.map(
+        (node) =>
+          node.x + 180,
+      ),
+      900,
+    );
+
+  const maxY =
+    Math.max(
+      ...nodes.map(
+        (node) =>
+          node.y + 72,
       ),
       240,
     );
