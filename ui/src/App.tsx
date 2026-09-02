@@ -36,6 +36,7 @@ import type {
 } from "./types";
 
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { WorkflowView } from "./WorkflowView";
 import { SettingsView } from "./SettingsView";
@@ -1512,8 +1513,23 @@ function ReportsPanel({
 
             {content !== null && (
               <div className="markdown">
-                <ReactMarkdown>
-                  {content}
+                <ReactMarkdown
+                  remarkPlugins={[
+                    remarkGfm,
+                  ]}
+                  components={{
+                    a: ({ node, ...props }) => (
+                      <a
+                        {...props}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      />
+                    ),
+                  }}
+                >
+                  {cleanMarkdownContent(
+                    content,
+                  )}
                 </ReactMarkdown>
               </div>
             )}
@@ -1540,6 +1556,38 @@ function formatBytes(bytes: number) {
   return `${(bytes / 1024).toFixed(
     1,
   )} KB`;
+}
+
+const INVISIBLE_CHARS =
+  /[\u200B-\u200F\u2060-\u206F\uFEFF\u00AD\u061C\u115F\u1160\u17B4\u17B5\u180E\uFFF9-\uFFFB]/g;
+
+// cleanMarkdownContent strips artifacts the web-search LLM copies
+// into its prose before rendering: Turn0-style citation tokens
+// (e.g. "[urn0search1]"), their "cite" labels (with any invisible
+// characters interleaved), and stray invisible/zero-width unicode
+// characters. Raw reports on disk are left untouched.
+function cleanMarkdownContent(
+  markdown: string,
+): string {
+  return (
+    markdown
+      // "cite" labels preceding citation tokens, case-insensitively,
+      // with optional invisible characters between letters.
+      .replace(
+        /c\s*i\s*t\s*e/gi,
+        "",
+      )
+      // Turn0-style citation clusters: [turn0search0], [urn0search1], ...
+      .replace(
+        /\[(?:t)?urn\d*search\d+\]/g,
+        "",
+      )
+      // Leftover zero-width / invisible unicode characters.
+      .replace(
+        INVISIBLE_CHARS,
+        "",
+      )
+  );
 }
 
 // ============================================================
