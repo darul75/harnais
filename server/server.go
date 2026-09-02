@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -164,6 +165,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(
 		"GET /api/runs/{runID}/reports/{name}",
 		s.getRunReport,
+	)
+
+	mux.HandleFunc(
+		"GET /api/runs/{runID}/audio",
+		s.listRunAudio,
+	)
+
+	mux.HandleFunc(
+		"GET /api/runs/{runID}/audio/{name}",
+		s.getRunAudio,
 	)
 
 	mux.HandleFunc(
@@ -803,6 +814,237 @@ func (s *Server) getRunReport(
 
 	_, _ =
 		w.Write(content)
+}
+
+// ------------------------------------------------------------
+// Audio
+// ------------------------------------------------------------
+
+// isAudioName reports whether a file name is an audio file we serve
+// for playback in the run view.
+func isAudioName(name string) bool {
+
+	ext :=
+		strings.ToLower(
+			filepath.Ext(name),
+		)
+
+	switch ext {
+
+	case ".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac":
+		return true
+	}
+
+	return false
+}
+
+// collectAudio walks a directory and returns the audio files inside
+// it, tagged with the runID they belong to.
+func collectAudio(
+	root string,
+	runID string,
+) []reportInfo {
+
+	var items []reportInfo
+
+	_ = filepath.WalkDir(
+		root,
+		func(
+			path string,
+			entry os.DirEntry,
+			err error,
+		) error {
+
+			if err != nil ||
+				entry.IsDir() {
+				return nil
+			}
+
+			if !isAudioName(
+				entry.Name(),
+			) {
+				return nil
+			}
+
+			info, infoErr :=
+				entry.Info()
+
+			if infoErr != nil {
+				return nil
+			}
+
+			relative, relErr :=
+				filepath.Rel(
+					root,
+					path,
+				)
+
+			if relErr != nil {
+				return nil
+			}
+
+			items =
+				append(
+					items,
+					reportInfo{
+						RunID: runID,
+
+						Name: relative,
+
+						Size: info.Size(),
+
+						Modified: info.ModTime(),
+					},
+				)
+
+			return nil
+		},
+	)
+
+	return items
+}
+
+// listRunAudio lists the audio files for one run.
+func (s *Server) listRunAudio(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	runID :=
+		r.PathValue("runID")
+
+	if !s.requireRun(w, runID) {
+		return
+	}
+
+	root, err :=
+		s.reportsRoot()
+
+	if err != nil {
+		http.Error(
+			w,
+			err.Error(),
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	dir :=
+		filepath.Join(
+			root,
+			runID,
+		)
+
+	items :=
+		collectAudio(
+			dir,
+			runID,
+		)
+
+	sort.Slice(
+		items,
+		func(i, j int) bool {
+			return items[i].Name <
+				items[j].Name
+		},
+	)
+
+	writeJSON(
+		w,
+		map[string]any{
+			"audio": items,
+		},
+	)
+}
+
+// getRunAudio serves a single run's audio file bytes for browser
+// playback. ServeContent supports range requests so seeking works.
+func (s *Server) getRunAudio(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	runID :=
+		r.PathValue("runID")
+
+	if !s.requireRun(w, runID) {
+		return
+	}
+
+	name :=
+		r.PathValue("name")
+
+	if name == "" {
+		http.Error(
+			w,
+			"audio name is required",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	resolved, err :=
+		s.Workspace.Resolve(
+			filepath.Join(
+				reportRoot,
+				runID,
+				name,
+			),
+		)
+
+	if err != nil {
+		http.Error(
+			w,
+			"invalid audio path",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	file, err :=
+		os.Open(resolved)
+
+	if err != nil {
+		http.Error(
+			w,
+			"audio not found",
+			http.StatusNotFound,
+		)
+		return
+	}
+
+	defer file.Close()
+
+	info, err :=
+		file.Stat()
+
+	if err != nil {
+		http.Error(
+			w,
+			"audio not found",
+			http.StatusNotFound,
+		)
+		return
+	}
+
+	if contentType :=
+		mime.TypeByExtension(
+			filepath.Ext(name),
+		); contentType != "" {
+
+		w.Header().Set(
+			"Content-Type",
+			contentType,
+		)
+	}
+
+	http.ServeContent(
+		w,
+		r,
+		name,
+		info.ModTime(),
+		file,
+	)
 }
 
 type runSummary struct {

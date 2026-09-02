@@ -82,6 +82,41 @@ var providers = []Provider{
 				Placeholder: "gpt-4o-mini",
 				EnvVar:      "OPENAI_MODEL",
 			},
+
+			{
+				Key:         "ttsVoice",
+				Label:       "TTS Voice",
+				Type:        FieldString,
+				Placeholder: "alloy",
+				EnvVar:      "OPENAI_TTS_VOICE",
+
+				Suggestions: []string{
+					"alloy",
+					"ash",
+					"ballad",
+					"coral",
+					"echo",
+					"fable",
+					"onyx",
+					"nova",
+					"sage",
+					"shimmer",
+				},
+			},
+
+			{
+				Key:         "ttsModel",
+				Label:       "TTS Model",
+				Type:        FieldString,
+				Placeholder: "gpt-4o-mini-tts",
+				EnvVar:      "OPENAI_TTS_MODEL",
+
+				Suggestions: []string{
+					"gpt-4o-mini-tts",
+					"tts-1",
+					"tts-1-hd",
+				},
+			},
 		},
 	},
 

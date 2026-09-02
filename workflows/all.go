@@ -31,5 +31,7 @@ func Register(
 		SecurityAuditWorkflow(s),
 
 		RefactorWorkflow(s),
+
+		TTSWorkflow(s),
 	)
 }

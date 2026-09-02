@@ -1,4 +1,5 @@
 import type {
+  AudioFile,
   Report,
   Settings,
   SettingsTestResult,
@@ -270,4 +271,33 @@ export async function getRunReport(
   }
 
   return response.text();
+}
+
+export async function getRunAudio(
+  runId: string,
+) {
+  const response = await fetch(
+    `${API_BASE}/api/runs/${encodeURIComponent(runId)}/audio`,
+  );
+
+  if (!response.ok) {
+    throw new ApiError(
+      await response.text(),
+      response.status,
+    );
+  }
+
+  const payload =
+    (await response.json()) as {
+      audio: AudioFile[];
+    };
+
+  return payload.audio;
+}
+
+export function getAudioUrl(
+  runId: string,
+  name: string,
+) {
+  return `${API_BASE}/api/runs/${encodeURIComponent(runId)}/audio/${encodeURIComponent(name)}`;
 }

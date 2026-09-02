@@ -1556,6 +1556,50 @@ pre {
 }
 
 /* --------------------------------------------------------- */
+/* Rendered audio */
+/* --------------------------------------------------------- */
+
+.audio {
+  padding: 14px;
+}
+
+.audio-item {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 8px;
+
+  padding: 12px 0;
+
+  border-bottom: 1px solid #374151;
+}
+
+.audio-item:last-child {
+  border-bottom: 0;
+}
+
+.audio-name {
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  gap: 8px;
+
+  font-family: monospace;
+
+  font-size: 12px;
+
+  color: #d1d5db;
+}
+
+.audio audio {
+  width: 100%;
+}
+
+/* --------------------------------------------------------- */
 /* Rendered markdown */
 /* --------------------------------------------------------- */
 

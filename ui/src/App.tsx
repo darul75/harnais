@@ -12,7 +12,9 @@ import {
   createEventSource,
   createRun,
   getAllReports,
+  getAudioUrl,
   getRun,
+  getRunAudio,
   getRuns,
   getRunReport,
   getRunReports,
@@ -23,6 +25,7 @@ import {
 import type {
   AgentActivity,
   AgentExecution,
+  AudioFile,
   ExecutionEdge,
   ExecutionNode,
   LLMCall,
@@ -1116,6 +1119,16 @@ function App() {
                 "pending"
             }
           />
+
+          <AudioPanel
+            runId={run.id}
+            active={
+              run.status ===
+                "running" ||
+              run.status ===
+                "pending"
+            }
+          />
         </>
       )}
 
@@ -1542,6 +1555,134 @@ function ReportsPanel({
                 </div>
               )}
           </div>
+        </div>
+      </details>
+    </section>
+  );
+}
+
+// ============================================================
+// Audio panel
+// ============================================================
+
+function AudioPanel({
+  runId,
+  active,
+}: {
+  runId: string;
+  active: boolean;
+}) {
+  const [audio, setAudio] =
+    useState<AudioFile[] | null>(null);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  // ------------------------------------------------------------
+  // Audio list: load once, then poll while the run is active
+  // ------------------------------------------------------------
+
+  useEffect(() => {
+    let disposed = false;
+
+    setAudio(null);
+    setError(null);
+
+    const load = () => {
+      getRunAudio(runId)
+        .then((list) => {
+          if (disposed) {
+            return;
+          }
+          setAudio(list);
+        })
+        .catch((err) => {
+          if (disposed) {
+            return;
+          }
+          setError(String(err));
+        });
+    };
+
+    load();
+
+    if (!active) {
+      return () => {
+        disposed = true;
+      };
+    }
+
+    const timer =
+      window.setInterval(
+        load,
+        3000,
+      );
+
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [runId, active]);
+
+  return (
+    <section className="panel">
+      <details
+        className="panel-collapsible"
+        open
+      >
+        <summary className="panel-header">
+          <span className="caret">
+            {"\u25B8"}
+          </span>
+
+          <h2>Audio</h2>
+        </summary>
+
+        <div className="audio">
+          {audio?.map((item) => (
+            <div
+              key={item.name}
+              className="audio-item"
+            >
+              <div className="audio-name">
+                {item.name}
+
+                <span className="report-meta">
+                  {formatBytes(item.size)}
+                </span>
+              </div>
+
+              <audio
+                controls
+                preload="metadata"
+                src={getAudioUrl(
+                  item.runId,
+                  item.name,
+                )}
+              />
+            </div>
+          ))}
+
+          {audio &&
+            audio.length ===
+              0 && (
+              <div className="empty">
+                No audio yet.
+              </div>
+            )}
+
+          {error && (
+            <div className="error">
+              {error}
+            </div>
+          )}
+
+          {!audio &&
+            !error && (
+              <div className="empty">
+                Loading audio...
+              </div>
+            )}
         </div>
       </details>
     </section>

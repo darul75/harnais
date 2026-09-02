@@ -207,3 +207,10 @@ export type Report = {
   size: number;
   modified: string;
 };
+
+export type AudioFile = {
+  runId: string;
+  name: string;
+  size: number;
+  modified: string;
+};
