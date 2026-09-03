@@ -1,9 +1,106 @@
 package config
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 )
+
+func TestOpenCodeModels(t *testing.T) {
+
+	server := httptest.NewServer(
+		http.HandlerFunc(
+			func(
+				w http.ResponseWriter,
+				r *http.Request,
+			) {
+				w.Header().Set(
+					"Content-Type",
+					"application/json",
+				)
+
+				w.Write(
+					[]byte(`{"data":[
+						{"providerID":"opencode","id":"big-pickle"},
+						{"providerID":"opencode","id":"deepseek-v4-flash"},
+						{"providerID":"deepseek","id":"deepseek-v4-flash"}
+					]}`),
+				)
+			},
+		),
+	)
+
+	defer server.Close()
+
+	models :=
+		OpenCodeModels(
+			server.URL,
+		)
+
+	want := []string{
+		"deepseek/deepseek-v4-flash",
+		"opencode/big-pickle",
+		"opencode/deepseek-v4-flash",
+	}
+
+	if len(models) != len(want) {
+		t.Fatalf("got %v, want %v", models, want)
+	}
+
+	for i := range want {
+
+		if models[i] != want[i] {
+			t.Fatalf("got %v, want %v", models, want)
+		}
+	}
+}
+
+func TestTestOpenCodeModel(t *testing.T) {
+
+	server := httptest.NewServer(
+		http.HandlerFunc(
+			func(
+				w http.ResponseWriter,
+				r *http.Request,
+			) {
+				w.Header().Set(
+					"Content-Type",
+					"application/json",
+				)
+
+				w.Write(
+					[]byte(`{"data":[
+						{"providerID":"opencode","id":"deepseek-v4-flash"}
+					]}`),
+				)
+			},
+		),
+	)
+
+	defer server.Close()
+
+	if err := testOpenCodeModel(
+		"opencode/deepseek-v4-flash",
+		server.URL,
+	); err != nil {
+		t.Fatalf("full ref should be accepted: %v", err)
+	}
+
+	if err := testOpenCodeModel(
+		"deepseek-v4-flash",
+		server.URL,
+	); err != nil {
+		t.Fatalf("bare id should be accepted: %v", err)
+	}
+
+	if err := testOpenCodeModel(
+		"opencode/nope",
+		server.URL,
+	); err == nil {
+		t.Fatal("unknown model should be rejected")
+	}
+}
 
 func TestStoreUpdateAndView(t *testing.T) {
 
@@ -82,15 +179,16 @@ func TestStoreOpenCodeProvider(t *testing.T) {
 		)
 	}
 
-	if len(openCode.Fields) != 3 ||
-		openCode.Fields[0].Key != "model" {
+	if len(openCode.Fields) != 4 ||
+		openCode.Fields[0].Key != "serverUrl" ||
+		openCode.Fields[1].Key != "model" {
 		t.Errorf(
-			"expected model + planner + reviewer fields, got %+v",
+			"expected server url + model + planner + reviewer fields, got %+v",
 			openCode.Fields,
 		)
 	}
 
-	if len(openCode.Fields[0].Suggestions) == 0 {
+	if len(openCode.Fields[1].Suggestions) == 0 {
 		t.Error("expected model suggestions")
 	}
 

@@ -208,6 +208,8 @@ type LLMCall struct {
 
 	Messages []MessageRecord `json:"messages,omitempty"`
 
+	Reasoning string `json:"reasoning,omitempty"`
+
 	Response string `json:"response,omitempty"`
 
 	RequestedTool string `json:"requestedTool,omitempty"`

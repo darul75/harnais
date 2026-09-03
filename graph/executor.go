@@ -27,6 +27,9 @@ const (
 	EventAgentStarted   EventType = "agent.started"
 	EventAgentCompleted EventType = "agent.completed"
 
+	EventAgentQuestion       EventType = "agent.question"
+	EventAgentQuestionAnswer EventType = "agent.question.answer"
+
 	EventLLMStarted   EventType = "llm.started"
 	EventLLMCompleted EventType = "llm.completed"
 

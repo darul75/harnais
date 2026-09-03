@@ -38,6 +38,7 @@ func newReportServer(t *testing.T) (*httptest.Server, *tools.Workspace, *RunMana
 		func(id string) (*WorkflowDetail, bool) {
 			return nil, false
 		},
+		graph.NewQuestionHub(),
 	)
 
 	server := httptest.NewServer(api.Handler())

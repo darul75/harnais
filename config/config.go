@@ -6,11 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"harnais/agent"
 	"harnais/llm"
@@ -126,6 +128,13 @@ var providers = []Provider{
 		ID:    "opencode",
 		Label: "OpenCode Zen",
 		Fields: []Field{
+			{
+				Key:         "serverUrl",
+				Label:       "Server URL",
+				Type:        FieldString,
+				Placeholder: "http://127.0.0.1:4096",
+			},
+
 			{
 				Key:         "model",
 				Label:       "Model",
@@ -622,6 +631,7 @@ func Test(
 	case "opencode":
 		return testOpenCodeModel(
 			values["model"],
+			values["serverUrl"],
 		)
 
 	case "gmail":
@@ -643,11 +653,92 @@ func Test(
 	}
 }
 
-// testOpenCodeModel verifies that a model exists for the OpenCode
-// provider by listing the cached model catalog. It does not make a
-// model call.
+// OpenCodeModels lists the models exposed by an OpenCode server as
+// "providerID/modelID" references, for use as field suggestions.
+func OpenCodeModels(
+	serverURL string,
+) []string {
+
+	if serverURL == "" {
+		serverURL = "http://127.0.0.1:4096"
+	}
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	response, err :=
+		client.Get(
+			strings.TrimRight(serverURL, "/") +
+				"/api/model",
+		)
+
+	if err != nil {
+		return nil
+	}
+
+	defer response.Body.Close()
+
+	if response.StatusCode !=
+		http.StatusOK {
+		return nil
+	}
+
+	var payload struct {
+		Data []struct {
+			ProviderID string `json:"providerID"`
+			ID         string `json:"id"`
+		} `json:"data"`
+	}
+
+	if err :=
+		json.NewDecoder(
+			response.Body,
+		).Decode(&payload); err != nil {
+
+		return nil
+	}
+
+	seen :=
+		map[string]bool{}
+
+	result :=
+		[]string{}
+
+	for _, model := range payload.Data {
+
+		if model.ProviderID == "" ||
+			model.ID == "" {
+			continue
+		}
+
+		ref :=
+			model.ProviderID + "/" + model.ID
+
+		if seen[ref] {
+			continue
+		}
+
+		seen[ref] = true
+
+		result =
+			append(
+				result,
+				ref,
+			)
+	}
+
+	sort.Strings(result)
+
+	return result
+}
+
+// testOpenCodeModel verifies that a model exists by listing the models
+// exposed by the OpenCode server. Accepts "providerID/modelID" or a
+// bare modelID (assumed to belong to the opencode provider).
 func testOpenCodeModel(
 	model string,
+	serverURL string,
 ) error {
 
 	if model == "" {
@@ -656,47 +747,39 @@ func testOpenCodeModel(
 		)
 	}
 
-	binary, err :=
-		exec.LookPath("opencode")
+	refs :=
+		OpenCodeModels(serverURL)
 
-	if err != nil {
+	if len(refs) == 0 {
 		return fmt.Errorf(
-			"opencode CLI not found: %w",
-			err,
+			"could not list models from OpenCode server %s",
+			serverURL,
 		)
 	}
 
-	cmd :=
-		exec.Command(
-			binary,
-			"models",
-			"opencode",
-		)
+	candidates :=
+		[]string{model}
 
-	output, err :=
-		cmd.CombinedOutput()
-
-	if err != nil {
-		return fmt.Errorf(
-			"opencode models: %v",
-			err,
-		)
+	if !strings.Contains(model, "/") {
+		candidates =
+			append(
+				candidates,
+				"opencode/"+model,
+			)
 	}
 
-	for _, line := range strings.Split(
-		string(output),
-		"\n",
-	) {
+	for _, ref := range refs {
 
-		if strings.TrimSpace(line) ==
-			model {
+		for _, candidate := range candidates {
 
-			return nil
+			if ref == candidate {
+				return nil
+			}
 		}
 	}
 
 	return fmt.Errorf(
-		"model %q not found on OpenCode Zen",
+		"model %q not found on the OpenCode server",
 		model,
 	)
 }

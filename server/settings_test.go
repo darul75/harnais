@@ -36,6 +36,7 @@ func testSettingsServer(t *testing.T) *httptest.Server {
 		func(id string) (*WorkflowDetail, bool) {
 			return nil, false
 		},
+		graph.NewQuestionHub(),
 	)
 
 	server := httptest.NewServer(api.Handler())

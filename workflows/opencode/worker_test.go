@@ -2,6 +2,7 @@ package opencode
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"harnais/graph"
@@ -310,6 +311,117 @@ func TestWorkerIDDefault(t *testing.T) {
 		t.Errorf(
 			"expected coder id, got %q",
 			got,
+		)
+	}
+}
+
+func TestRecorderRecordParts(t *testing.T) {
+
+	recorder, run :=
+		testRecorder(t)
+
+	parts := []byte(`[
+		{"type":"text","text":"Done."},
+		{"type":"tool","tool":"write","callID":"call_1","state":{"status":"completed","input":{"filePath":"a.txt"},"output":"Wrote"}},
+		{"type":"tool","tool":"bash","callID":"call_2","state":{"status":"error","input":{"command":"go test"},"error":"boom"}}
+	]`)
+
+	recorder.recordParts(parts)
+
+	if !recorder.hasRecorded() {
+		t.Fatal("expected activities to be recorded from parts")
+	}
+
+	if len(run.LLMCalls) != 1 {
+		t.Fatalf("expected 1 LLM call, got %d", len(run.LLMCalls))
+	}
+
+	if len(run.ToolCalls) != 2 {
+		t.Fatalf("expected 2 tool calls, got %d", len(run.ToolCalls))
+	}
+
+	if run.LLMCalls[0].Response != "Done." {
+		t.Fatalf("unexpected response %q", run.LLMCalls[0].Response)
+	}
+
+	if run.ToolCalls[1].Error == "" {
+		t.Fatal("expected tool error to be recorded")
+	}
+}
+
+func TestRecorderRecordPartsSkippedWhenLive(t *testing.T) {
+
+	recorder, run :=
+		testRecorder(t)
+
+	recorder.processServerEvent(
+		ServerEvent{
+			Type:       "session.next.step.started",
+			Properties: map[string]any{},
+		},
+	)
+
+	recorder.recordParts(
+		[]byte(`[{"type":"text","text":"X"}]`),
+	)
+
+	if len(run.LLMCalls) != 1 {
+		t.Fatalf(
+			"expected only the live LLM call, got %d",
+			len(run.LLMCalls),
+		)
+	}
+}
+
+func TestRecorderSyncMessages(t *testing.T) {
+
+	recorder, run :=
+		testRecorder(t)
+
+	messages := []SessionMessage{
+		{
+			Info: SessionMessageInfo{
+				ID:   "msg_1",
+				Role: "assistant",
+			},
+
+			Parts: []json.RawMessage{
+				json.RawMessage(`{"id":"p1","type":"reasoning","text":"think"}`),
+				json.RawMessage(`{"id":"p2","type":"text","text":"Hello"}`),
+				json.RawMessage(`{"id":"p3","type":"tool","tool":"bash","callID":"c1","state":{"status":"completed","input":{"command":"go test"},"output":"ok"}}`),
+			},
+		},
+	}
+
+	recorder.syncMessages(messages)
+
+	if len(run.LLMCalls) != 1 {
+		t.Fatalf("expected 1 LLM call, got %d", len(run.LLMCalls))
+	}
+
+	if run.LLMCalls[0].Response != "Hello" {
+		t.Fatalf("unexpected response %q", run.LLMCalls[0].Response)
+	}
+
+	if run.LLMCalls[0].Reasoning != "think" {
+		t.Fatalf("unexpected reasoning %q", run.LLMCalls[0].Reasoning)
+	}
+
+	if len(run.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(run.ToolCalls))
+	}
+
+	if got :=
+		run.ToolCalls[0].Output["output"]; got != "ok" {
+		t.Fatalf("unexpected tool output %v", got)
+	}
+
+	recorder.finalize()
+
+	if run.LLMCalls[0].Status != graph.StatusCompleted {
+		t.Fatalf(
+			"expected completed LLM call, got %v",
+			run.LLMCalls[0].Status,
 		)
 	}
 }

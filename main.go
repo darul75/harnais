@@ -55,10 +55,14 @@ func main() {
 			workspaceRoot,
 		)
 
+	questionHub :=
+		graph.NewQuestionHub()
+
 	registry, err :=
 		workflows.Register(
 			workspace,
 			store,
+			questionHub,
 		)
 
 	if err != nil {
@@ -269,6 +273,8 @@ func main() {
 					Edges:       edges,
 				}, true
 			},
+
+			questionHub,
 		)
 
 	// ============================================================

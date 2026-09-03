@@ -22,6 +22,7 @@ import {
   getUploadUrl,
   getWorkflow,
   getWorkflows,
+  replyQuestion,
 } from "./api";
 
 import type {
@@ -98,7 +99,28 @@ const EVENT_TYPES = [
   "tool.started",
   "tool.completed",
   "tool.failed",
+  "agent.question",
+  "agent.question.answer",
 ];
+
+type PendingQuestion = {
+  runId: string;
+  requestId: string;
+  questions: UIVerQuestionInfo[];
+};
+
+type UIVerQuestionInfo = {
+  question?: string;
+  header?: string;
+  options?: UIVerQuestionOption[];
+  multiple?: boolean;
+  custom?: boolean;
+};
+
+type UIVerQuestionOption = {
+  label: string;
+  description?: string;
+};
 
 function App() {
   const [task, setTask] = useState("");
@@ -136,6 +158,9 @@ function App() {
 
   const [workflows, setWorkflows] =
     useState<Workflow[]>([]);
+
+  const [pendingQuestions, setPendingQuestions] =
+    useState<PendingQuestion[]>([]);
 
   // ------------------------------------------------------------
   // Load workflows
@@ -398,6 +423,84 @@ function App() {
             ];
           },
         );
+
+        if (
+          runtimeEvent.type ===
+          "agent.question"
+        ) {
+          const data =
+            runtimeEvent.data ?? {};
+
+          const requestId =
+            typeof data.requestId ===
+            "string"
+              ? data.requestId
+              : "";
+
+          const questions =
+            Array.isArray(
+              data.questions,
+            )
+              ? data.questions
+              : [];
+
+          if (requestId) {
+            setPendingQuestions(
+              (current) => {
+                if (
+                  current.some(
+                    (q) =>
+                      q.runId ===
+                        runtimeEvent.runID &&
+                      q.requestId ===
+                        requestId,
+                  )
+                ) {
+                  return current;
+                }
+
+                return [
+                  ...current,
+                  {
+                    runId:
+                      runtimeEvent.runID,
+                    requestId,
+                    questions,
+                  },
+                ];
+              },
+            );
+          }
+        }
+
+        if (
+          runtimeEvent.type ===
+          "agent.question.answer"
+        ) {
+          const data =
+            runtimeEvent.data ?? {};
+
+          const requestId =
+            typeof data.requestId ===
+            "string"
+              ? data.requestId
+              : "";
+
+          if (requestId) {
+            setPendingQuestions(
+              (current) =>
+                current.filter(
+                  (q) =>
+                    !(
+                      q.runId ===
+                        runtimeEvent.runID &&
+                      q.requestId ===
+                        requestId
+                    ),
+                ),
+            );
+          }
+        }
 
         if (
           runtimeEvent.executionID
@@ -883,6 +986,28 @@ function App() {
               {run.id}
             </span>
           </section>
+
+
+          {/* --------------------------------------------------- */}
+          {/* Pending clarifying questions */}
+          {/* --------------------------------------------------- */}
+
+          {pendingQuestions
+            .filter((q) => q.runId === run.id)
+            .map((q) => (
+              <QuestionCard
+                key={q.requestId}
+                question={q}
+                onAnswered={(requestId) =>
+                  setPendingQuestions((current) =>
+                    current.filter(
+                      (p) =>
+                        p.requestId !== requestId,
+                    ),
+                  )
+                }
+              />
+            ))}
 
 
           {/* --------------------------------------------------- */}
@@ -1436,6 +1561,212 @@ function App() {
         </main>
       </div>
     </div>
+  );
+}
+
+// ============================================================
+// QuestionCard: surface a blocked agent's clarifying question
+// and POST the user's answer back so the run resumes.
+// ============================================================
+
+function QuestionCard({
+  question,
+  onAnswered,
+}: {
+  question: PendingQuestion;
+  onAnswered: (requestId: string) => void;
+}) {
+  const [selection, setSelection] =
+    useState<string[][]>(
+      question.questions.map(() => []),
+    );
+
+  const [submitting, setSubmitting] =
+    useState(false);
+
+  const [error, setError] =
+    useState<string | null>(null);
+
+  function toggle(
+    qIndex: number,
+    label: string,
+    multiple: boolean,
+  ) {
+    setSelection((current) => {
+      const next = current.map((row) => [...row]);
+
+      if (multiple) {
+        const has =
+          next[qIndex].includes(label);
+
+        next[qIndex] = has
+          ? next[qIndex].filter(
+              (l) => l !== label,
+            )
+          : [...next[qIndex], label];
+      } else {
+        next[qIndex] = [label];
+      }
+
+      return next;
+    });
+  }
+
+  async function submit(
+    event: FormEvent,
+  ) {
+    event.preventDefault();
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      await replyQuestion(
+        question.runId,
+        question.requestId,
+        selection,
+      );
+
+      onAnswered(question.requestId);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to submit answer",
+      );
+
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <section className="panel question-card">
+      <div className="panel-header">
+        <h2>
+          Clarifying question
+        </h2>
+
+        <span className="question-pending">
+          Run is paused, awaiting your answer
+        </span>
+      </div>
+
+      <form onSubmit={submit}>
+        {question.questions.map(
+          (q, qIndex) => (
+            <div
+              key={qIndex}
+              className="question-block"
+            >
+              <div className="question-text">
+                {q.header && (
+                  <strong>
+                    {q.header}:{" "}
+                  </strong>
+                )}
+
+                <ReactMarkdown>
+                  {q.question ?? ""}
+                </ReactMarkdown>
+              </div>
+
+              {(q.options ?? [])
+                .length > 0 ? (
+                <div className="question-options">
+                  {(q.options ?? []).map(
+                    (option) => {
+                      const checked =
+                        selection[
+                          qIndex
+                        ].includes(
+                          option.label,
+                        );
+
+                      return (
+                        <label
+                          key={option.label}
+                          className={`question-option ${
+                            checked
+                              ? "selected"
+                              : ""
+                          }`}
+                        >
+                          <input
+                            type={
+                              q.multiple
+                                ? "checkbox"
+                                : "radio"
+                            }
+                            name={`question-${qIndex}`}
+                            checked={checked}
+                            onChange={() =>
+                              toggle(
+                                qIndex,
+                                option.label,
+                                q.multiple ??
+                                  false,
+                              )
+                            }
+                          />
+
+                          <span className="question-option-label">
+                            {option.label}
+                          </span>
+
+                          {option.description && (
+                            <span className="question-option-description">
+                              {option.description}
+                            </span>
+                          )}
+                        </label>
+                      );
+                    },
+                  )}
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  className="question-input"
+                  value={
+                    selection[qIndex][0] ?? ""
+                  }
+                  onChange={(e) =>
+                    setSelection((current) => {
+                      const next = current.map(
+                        (row) => [...row],
+                      );
+
+                      next[qIndex] = [
+                        e.target.value,
+                      ];
+
+                      return next;
+                    })
+                  }
+                  placeholder="Type your answer..."
+                />
+              )}
+            </div>
+          ),
+        )}
+
+        {error && (
+          <div className="error">
+            {error}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          className="question-submit"
+          disabled={submitting}
+        >
+          {submitting
+            ? "Submitting..."
+            : "Submit answer"}
+        </button>
+      </form>
+    </section>
   );
 }
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"harnais/config"
+	"harnais/graph"
 	"harnais/tools"
 )
 
@@ -33,6 +34,7 @@ func TestTestCommandGoModInWorkspace(t *testing.T) {
 		NewShared(
 			tools.NewWorkspace(root),
 			config.NewStore(""),
+			graph.NewQuestionHub(),
 		)
 
 	program, args, dir :=
@@ -80,6 +82,7 @@ func TestTestCommandGoModInParent(t *testing.T) {
 		NewShared(
 			tools.NewWorkspace(root),
 			config.NewStore(""),
+			graph.NewQuestionHub(),
 		)
 
 	program, args, dir :=
@@ -124,6 +127,7 @@ func TestTestCommandPackageJSON(t *testing.T) {
 		NewShared(
 			tools.NewWorkspace(root),
 			config.NewStore(""),
+			graph.NewQuestionHub(),
 		)
 
 	program, args, dir :=
@@ -159,6 +163,7 @@ func TestTestCommandNone(t *testing.T) {
 		NewShared(
 			tools.NewWorkspace(root),
 			config.NewStore(""),
+			graph.NewQuestionHub(),
 		)
 
 	program, args, _ :=

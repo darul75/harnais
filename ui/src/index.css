@@ -2145,3 +2145,111 @@ details[open] > summary .caret {
 
   background: #111827;
 }
+
+/* ------------------------------------------------------------
+   Question card (OpenCode clarifying question)
+   ------------------------------------------------------------ */
+
+.question-card {
+  border-color: #1d4ed8;
+}
+
+.question-pending {
+  color: #fbbf24;
+}
+
+.question-card form {
+  padding: 13px 17px;
+}
+
+.question-block {
+  margin-bottom: 14px;
+}
+
+.question-text {
+  margin: 0 0 8px;
+
+  max-height: 320px;
+
+  overflow-y: auto;
+}
+
+.question-text > p {
+  margin: 0;
+}
+
+.question-options {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 6px;
+}
+
+.question-option {
+  display: flex;
+
+  align-items: center;
+
+  gap: 8px;
+
+  padding: 8px 10px;
+
+  border: 1px solid #374151;
+
+  border-radius: 7px;
+
+  cursor: pointer;
+}
+
+.question-option.selected {
+  border-color: #2563eb;
+
+  background: #1e3a8a;
+}
+
+.question-option input {
+  margin: 0;
+}
+
+.question-option-label {
+  font-weight: 500;
+}
+
+.question-option-description {
+  color: #9ca3af;
+
+  font-size: 12px;
+}
+
+.question-input {
+  width: 100%;
+
+  padding: 8px 10px;
+
+  border: 1px solid #4b5563;
+
+  border-radius: 7px;
+
+  color: #f9fafb;
+
+  background: #111827;
+
+  font: inherit;
+}
+
+.question-submit {
+  border-color: #3b82f6;
+
+  background: #1d4ed8;
+}
+
+.question-submit:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.question-submit:disabled {
+  opacity: 0.6;
+
+  cursor: not-allowed;
+}

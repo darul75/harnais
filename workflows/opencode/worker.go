@@ -1,74 +1,28 @@
-// Package opencode integrates the OpenCode CLI as a graph Worker.
+// Package opencode integrates the OpenCode headless server as a graph
+// Worker.
 //
-// A Worker shells out to `opencode run --format json` scoped to a
-// workspace directory, streams the JSON events to capture the final
-// assistant text, and returns it as the node output state.
+// A Worker drives an external `opencode serve` instance over HTTP,
+// creates a session scoped to a workspace directory, sends the prompt,
+// streams the events to capture the final assistant text, and returns it
+// as the node output state. Clarifying questions OpenCode asks mid-run
+// are surfaced to the harnais UI and answered live, resuming the run.
 package opencode
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"harnais/graph"
 )
 
-// permissionConfig scopes what the OpenCode subprocess may do.
-//
-// Workspace-internal edits/reads are allowed (the workspace is the
-// working directory), while external directories, network access,
-// subagents, and skills are denied. Shell commands are limited to
-// the same development commands harnais exposes to its own agents.
-const permissionConfig = `{
-  "*": "allow",
-  "external_directory": "deny",
-  "webfetch": "deny",
-  "websearch": "deny",
-  "task": "deny",
-  "skill": "deny",
-  "bash": {
-    "go *": "allow",
-    "git *": "allow",
-    "npm *": "allow",
-    "node *": "allow",
-    "pnpm *": "allow",
-    "yarn *": "allow",
-    "grep *": "allow",
-    "*": "deny"
-  }
-}`
-
-// readOnlyPermissionConfig is like permissionConfig but denies all
-// file edits, for phases (planning, review) that must not mutate
-// the workspace.
-const readOnlyPermissionConfig = `{
-  "*": "deny",
-  "read": "allow",
-  "external_directory": "deny",
-  "webfetch": "deny",
-  "websearch": "deny",
-  "task": "deny",
-  "skill": "deny",
-  "bash": {
-    "go *": "allow",
-    "git *": "allow",
-    "npm *": "allow",
-    "node *": "allow",
-    "pnpm *": "allow",
-    "yarn *": "allow",
-    "grep *": "allow",
-    "*": "deny"
-  }
-}`
-
-// Worker is a graph Worker that runs a task through the OpenCode CLI.
+// Worker is a graph Worker that runs a task through a headless
+// OpenCode server (`opencode serve`) over HTTP, listening for
+// clarifying questions and surfacing them to the run UI.
 type Worker struct {
 	// AgentID is the agent identifier shown in the run UI.
 	AgentID string
@@ -83,7 +37,7 @@ type Worker struct {
 	// Empty uses OpenCode's default for the configured provider.
 	Model string
 
-	// ReadOnly restricts the subprocess to read-only operations
+	// ReadOnly restricts the server session to read-only operations
 	// (no file edits). Used for planning and review phases.
 	ReadOnly bool
 
@@ -91,11 +45,23 @@ type Worker struct {
 	// under. Defaults to "output".
 	OutputKey string
 
-	// Binary is the OpenCode executable. Defaults to "opencode".
-	Binary string
+	// ServerURL is the base URL of the external `opencode serve`
+	// instance. Defaults to http://127.0.0.1:4096.
+	ServerURL string
 
-	// Timeout bounds a single run. Defaults to 10 minutes.
+	// QuestionHub delivers user answers from the HTTP API back to a
+	// worker blocked on a clarifying question. If nil, questions are
+	// answered with their first option.
+	QuestionHub *graph.QuestionHub
+
+	// Timeout bounds a single run (including time spent waiting for
+	// user answers). Defaults to 10 minutes.
 	Timeout time.Duration
+
+	// Resume sends the prompt to the session already stored under
+	// state["sessionId"] instead of creating a new session. Used to
+	// send follow-up messages (e.g. plan revisions) to the same agent.
+	Resume bool
 }
 
 func (w *Worker) ID() string {
@@ -107,13 +73,13 @@ func (w *Worker) ID() string {
 	return "opencode"
 }
 
-func (w *Worker) binary() string {
+func (w *Worker) serverURL() string {
 
-	if w.Binary != "" {
-		return w.Binary
+	if w.ServerURL != "" {
+		return w.ServerURL
 	}
 
-	return "opencode"
+	return "http://127.0.0.1:4096"
 }
 
 func (w *Worker) timeout() time.Duration {
@@ -122,7 +88,67 @@ func (w *Worker) timeout() time.Duration {
 		return w.Timeout
 	}
 
-	return 10 * time.Minute
+	return 30 * time.Minute
+}
+
+func (w *Worker) agent() string {
+	return "build"
+}
+
+func (w *Worker) grantedPermissions() map[string]any {
+
+	if w.ReadOnly {
+		return readOnlyPermissionRules
+	}
+
+	return permissionRules
+}
+
+// permissionRules scopes what an OpenCode server session may do.
+// Workspace-internal edits/reads are allowed (the workspace is the
+// working directory), while external directories, network access,
+// subagents, and skills are denied. Shell commands are limited to
+// the same development commands harnais exposes to its own agents.
+var permissionRules = map[string]any{
+	"*":                  "allow",
+	"external_directory": "deny",
+	"webfetch":           "deny",
+	"websearch":          "deny",
+	"task":               "deny",
+	"skill":              "deny",
+	"bash": map[string]any{
+		"go *":   "allow",
+		"git *":  "allow",
+		"npm *":  "allow",
+		"node *": "allow",
+		"pnpm *": "allow",
+		"yarn *": "allow",
+		"grep *": "allow",
+		"*":      "deny",
+	},
+}
+
+// readOnlyPermissionRules is like permissionRules but denies all
+// file edits, for phases (planning, review) that must not mutate
+// the workspace.
+var readOnlyPermissionRules = map[string]any{
+	"*":                  "deny",
+	"read":               "allow",
+	"external_directory": "deny",
+	"webfetch":           "deny",
+	"websearch":          "deny",
+	"task":               "deny",
+	"skill":              "deny",
+	"bash": map[string]any{
+		"go *":   "allow",
+		"git *":  "allow",
+		"npm *":  "allow",
+		"node *": "allow",
+		"pnpm *": "allow",
+		"yarn *": "allow",
+		"grep *": "allow",
+		"*":      "deny",
+	},
 }
 
 // ------------------------------------------------------------
@@ -199,7 +225,7 @@ func (w *Worker) Run(
 }
 
 // ------------------------------------------------------------
-// OpenCode subprocess
+// OpenCode server driver
 // ------------------------------------------------------------
 
 func (w *Worker) runOpenCode(
@@ -209,9 +235,22 @@ func (w *Worker) runOpenCode(
 	state graph.State,
 ) (graph.WorkerResult, error) {
 
+	// Resolve the workspace to an absolute path: the server resolves
+	// the `directory` parameter against its own cwd, which differs from
+	// harnais's, so a relative path would point at the wrong location.
+	dir, err :=
+		filepath.Abs(w.Dir)
+
+	if err != nil {
+		return graph.WorkerResult{}, fmt.Errorf(
+			"opencode: resolve workspace: %w",
+			err,
+		)
+	}
+
 	if err :=
 		os.MkdirAll(
-			w.Dir,
+			dir,
 			0o755,
 		); err != nil {
 
@@ -229,116 +268,13 @@ func (w *Worker) runOpenCode(
 
 	defer cancel()
 
-	args := []string{
-		"run",
-		"--format", "json",
-		"--dir", w.Dir,
-		"--title", fmt.Sprintf(
-			"harnais/%s/%s",
-			executionContext.RunID,
-			executionContext.NodeID,
-		),
-	}
-
-	if w.Model != "" {
-		args =
-			append(
-				args,
-				"--model",
-				w.Model,
-			)
-	}
-
-	args =
-		append(
-			args,
-			w.buildPrompt(state),
+	client :=
+		NewClient(
+			w.serverURL(),
 		)
 
-	cmd :=
-		exec.CommandContext(
-			timeoutCtx,
-			w.binary(),
-			args...,
-		)
-
-	cmd.Dir = w.Dir
-
-	permission :=
-		permissionConfig
-
-	if w.ReadOnly {
-		permission =
-			readOnlyPermissionConfig
-	}
-
-	cmd.Env =
-		append(
-			os.Environ(),
-			"OPENCODE_PERMISSION="+permission,
-			"OPENCODE_DISABLE_AUTOUPDATE=1",
-		)
-
-	// Make the process its own group leader so a timeout (or a
-	// lingering child) can be released by killing the whole group.
-	cmd.SysProcAttr =
-		&syscall.SysProcAttr{
-			Setpgid: true,
-		}
-
-	// Use *os.File pipes for both stdout and stderr. This avoids
-	// os/exec's internal copier goroutines, which would make
-	// Wait() block forever if a child outlives OpenCode while
-	// holding the pipe open.
-	pr, pw, err :=
-		os.Pipe()
-
-	if err != nil {
-		return graph.WorkerResult{}, fmt.Errorf(
-			"opencode: stdout pipe: %w",
-			err,
-		)
-	}
-
-	defer pr.Close()
-
-	stderrFile, err :=
-		os.CreateTemp(
-			"",
-			"harnais-opencode-stderr-*",
-		)
-
-	if err != nil {
-		return graph.WorkerResult{}, fmt.Errorf(
-			"opencode: stderr file: %w",
-			err,
-		)
-	}
-
-	defer os.Remove(
-		stderrFile.Name(),
-	)
-
-	defer stderrFile.Close()
-
-	cmd.Stdout = pw
-	cmd.Stderr = stderrFile
-
-	if err :=
-		cmd.Start(); err != nil {
-
-		pw.Close()
-
-		return graph.WorkerResult{}, fmt.Errorf(
-			"opencode: start: %w",
-			err,
-		)
-	}
-
-	// The parent no longer needs its copy of the write end, so
-	// close it to let EOF propagate once OpenCode (and any child
-	// still writing) is gone.
-	pw.Close()
+	prompt :=
+		w.buildPrompt(state)
 
 	recorder :=
 		newActivityRecorder(
@@ -346,138 +282,681 @@ func (w *Worker) runOpenCode(
 			executionContext.Run,
 			w.ID(),
 			agentExecutionID,
-			w.buildPrompt(state),
+			prompt,
 		)
 
-	// --------------------------------------------------------
-	// Stream stdout lines while the process runs. Reading in a
-	// goroutine lets us stop even if a lingering child keeps the
-	// pipe open after OpenCode exits.
-	// --------------------------------------------------------
-
-	lines :=
-		make(
-			chan []byte,
-			256,
+	title :=
+		fmt.Sprintf(
+			"harnais/%s/%s",
+			executionContext.RunID,
+			executionContext.NodeID,
 		)
+
+	sessionID := ""
+
+	if w.Resume {
+
+		sessionID, _ =
+			state["sessionId"].(string)
+
+		if sessionID == "" {
+			return graph.WorkerResult{}, fmt.Errorf(
+				"opencode: resume requires a sessionId in state",
+			)
+		}
+	} else {
+
+		sessionID, err =
+			client.CreateSession(
+				timeoutCtx,
+				dir,
+				title,
+				w.agent(),
+				w.Model,
+			)
+
+		if err != nil {
+			return graph.WorkerResult{}, fmt.Errorf(
+				"opencode: create session: %w",
+				err,
+			)
+		}
+	}
+
+	recorder.setSessionID(sessionID)
+
+	// ------------------------------------------------------
+	// Stream server events.
+	//
+	// The directory stream carries high-level control events
+	// (questions, status, errors). Live progress is captured by
+	// polling the session message history.
+	// ------------------------------------------------------
+
+	eventCtx, cancelEvents :=
+		context.WithCancel(ctx)
+
+	defer cancelEvents()
+
+	events, err :=
+		client.SubscribeSSE(
+			eventCtx,
+			dir,
+		)
+
+	if err != nil {
+		// Non-fatal: the message request still runs.
+		events = nil
+	}
+
+	// pollHistory fetches the session's message history and reflects
+	// it into the activity records (live text, reasoning, tools).
+	pollHistory := func() {
+
+		pollCtx, cancelPoll :=
+			context.WithTimeout(
+				context.Background(),
+				5*time.Second,
+			)
+
+		defer cancelPoll()
+
+		messages, err :=
+			client.SessionMessages(
+				pollCtx,
+				sessionID,
+			)
+
+		if err != nil {
+			return
+		}
+
+		recorder.syncMessages(messages)
+	}
+
+	// ------------------------------------------------------
+	// Send the prompt. The server blocks until the run finishes
+	// (or needs input such as a question).
+	// ------------------------------------------------------
+
+	type outcome struct {
+		result *MessageResult
+
+		err error
+	}
+
+	done :=
+		make(chan outcome, 1)
 
 	go func() {
-		defer close(lines)
+		result, sendErr :=
+			client.SendMessage(
+				timeoutCtx,
+				sessionID,
+				dir,
+				w.agent(),
+				w.Model,
+				prompt,
+			)
 
-		scanner :=
-			bufio.NewScanner(pr)
+		done <- outcome{
+			result: result,
 
-		scanner.Buffer(
-			make(
-				[]byte,
-				0,
-				64*1024,
-			),
-			4*1024*1024,
-		)
-
-		for scanner.Scan() {
-
-			line :=
-				append(
-					[]byte(nil),
-					scanner.Bytes()...,
-				)
-
-			lines <- line
+			err: sendErr,
 		}
 	}()
 
-	// Wait() has no copier goroutines to wait on (both output
-	// targets are *os.File), so it returns as soon as OpenCode's
-	// process exits.
-	waitResult :=
-		make(chan error, 1)
+	// Track surfaced questions so a replayed event isn't shown twice.
+	surfaced :=
+		map[string]bool{}
 
-	go func() {
-		waitResult <- cmd.Wait()
-	}()
+	var (
+		result *MessageResult
 
-	waitDone := false
+		runErr error
 
-	var waitErr error
+		clarifications []Clarification
+	)
 
+	// handleControl reacts to questions, session errors, and provider
+	// retries carried by either stream. It returns a run-ending error
+	// (or nil) that breaks the loop.
+	handleControl := func(event ServerEvent) error {
+
+		if msg :=
+			sessionRetryError(event); msg != "" {
+
+			// The provider failed and opencode is retrying (e.g. a
+			// rate limit). Surface it promptly instead of leaving the
+			// run silently stuck for the retry duration.
+			return fmt.Errorf(
+				"%s",
+				msg,
+			)
+		}
+
+		if isSessionError(event.Type) {
+
+			// The server reported a session error (e.g. a provider
+			// failure or rate limit). Fail promptly so the run
+			// surfaces the message instead of hanging.
+			return fmt.Errorf(
+				"opencode session error: %s",
+				sessionErrorMessage(event),
+			)
+		}
+
+		if isQuestionEvent(event.Type) {
+
+			if question :=
+				questionFromEvent(event); question != nil &&
+				!surfaced[question.RequestID] {
+
+				surfaced[question.RequestID] = true
+
+				cls, err :=
+					w.handleQuestion(
+						timeoutCtx,
+						client,
+						executionContext.RunID,
+						dir,
+						question,
+					)
+
+				if err != nil {
+					return err
+				}
+
+				clarifications =
+					append(
+						clarifications,
+						cls...,
+					)
+			}
+		}
+
+		return nil
+	}
+
+	pollTicker :=
+		time.NewTicker(1500 * time.Millisecond)
+
+	defer pollTicker.Stop()
+
+loop:
 	for {
+
 		select {
 
-		case line, ok :=
-			<-lines:
+		case <-timeoutCtx.Done():
 
+			cancelEvents()
+
+			_ = client.Abort(
+				context.Background(),
+				sessionID,
+			)
+
+			return graph.WorkerResult{}, fmt.Errorf(
+				"opencode: %w",
+				timeoutCtx.Err(),
+			)
+
+		case event, ok :=
+			<-events:
+
+			// Directory stream: control events only.
 			if !ok {
-				lines = nil
+				events = nil
 
 				continue
 			}
 
-			recorder.process(line)
+			if err :=
+				handleControl(event); err != nil {
 
-		case err :=
-			<-waitResult:
+				runErr = err
 
-			waitErr = err
-			waitDone = true
-
-			if lines == nil {
-				break
+				break loop
 			}
 
-			// OpenCode exited but the pipe is still open
-			// (a grandchild inherited it). Release the group.
-			if cmd.Process != nil {
-				_ = syscall.Kill(
-					-cmd.Process.Pid,
-					syscall.SIGKILL,
-				)
-			}
-		}
+		case <-pollTicker.C:
 
-		if waitDone &&
-			lines == nil {
-			break
+			// Live progress: poll the session history and record the
+			// assistant text, reasoning, and tool calls incrementally.
+			pollHistory()
+
+		case sendResult :=
+			<-done:
+
+			result = sendResult.result
+			runErr = sendResult.err
+
+			break loop
 		}
 	}
 
-	if waitErr != nil {
+	cancelEvents()
 
-		message :=
-			strings.TrimSpace(
-				readAll(stderrFile),
-			)
+	// Final history poll + finalize the recorded activities.
+	pollHistory()
 
-		if message == "" {
-			message =
-				recorder.errorMessage
-		}
+	recorder.finalize()
 
-		return graph.WorkerResult{}, fmt.Errorf(
-			"opencode: %v%s",
-			waitErr,
-			suffixMessage(message),
+	// Fallback: if polling captured no activities (e.g. the history
+	// fetch failed throughout), derive them from the completed message
+	// parts so the UI still shows the LLM response and tool calls.
+	if result != nil &&
+		!recorder.hasRecorded() {
+
+		recorder.recordParts(
+			result.Parts,
 		)
 	}
 
-	sessionID, text :=
-		recorder.output()
-
-	outputKey :=
-		w.OutputKey
-
-	if outputKey == "" {
-		outputKey = "output"
+	if runErr != nil {
+		return graph.WorkerResult{}, fmt.Errorf(
+			"opencode: %w",
+			runErr,
+		)
 	}
 
-	return graph.WorkerResult{
-		State: graph.State{
-			outputKey: text,
+	// Surface any questions still pending in the final message.
+	if result != nil {
 
-			"sessionId": sessionID,
+		if message :=
+			result.ErrorMessage(); message != "" {
+
+			return graph.WorkerResult{}, fmt.Errorf(
+				"opencode: %s",
+				message,
+			)
+		}
+
+		outputKey :=
+			w.OutputKey
+
+		if outputKey == "" {
+			outputKey = "output"
+		}
+
+		text :=
+			result.FinalText()
+
+		return graph.WorkerResult{
+			State: graph.State{
+				outputKey: text,
+
+				"sessionId": sessionID,
+
+				"clarifications": clarifications,
+			},
+		}, nil
+	}
+
+	return graph.WorkerResult{}, fmt.Errorf(
+		"opencode: no response from server",
+	)
+}
+
+// handleQuestion surfaces a pending question to the run UI and waits
+// for the user's answer, then resumes (or rejects) the opencode run.
+// The recorded clarifications are returned so the run can carry them
+// forward to downstream agents.
+func (w *Worker) handleQuestion(
+	ctx context.Context,
+	client *Client,
+	runID string,
+	directory string,
+	question *Question,
+) ([]Clarification, error) {
+
+	var (
+		answers [][]string
+
+		ch      <-chan [][]string
+		cleanup func()
+	)
+
+	if w.QuestionHub != nil {
+
+		ch, cleanup =
+			w.QuestionHub.Register(
+				runID,
+				question.RequestID,
+			)
+	}
+
+	graph.EmitEvent(
+		ctx,
+		graph.Event{
+			Time: time.Now(),
+
+			Type: graph.EventAgentQuestion,
+
+			AgentID: w.ID(),
+
+			Data: map[string]any{
+				"requestId": question.RequestID,
+
+				"sessionId": question.SessionID,
+
+				"questions": question.Questions,
+			},
 		},
-	}, nil
+	)
+
+	if w.QuestionHub != nil {
+
+		// Register happens before the event is emitted, so an answer
+		// that arrives the moment the question appears is not lost.
+		select {
+		case <-ctx.Done():
+		case got, ok := <-ch:
+			if ok {
+				answers = got
+			}
+		}
+
+		if cleanup != nil {
+			cleanup()
+		}
+	}
+
+	if len(answers) !=
+		len(question.Questions) {
+
+		// Either no hub (auto mode) or Wait was cancelled.
+		// Auto-answer by picking the first option for every
+		// question that offers one.
+		answers =
+			make([][]string, 0, len(question.Questions))
+
+		for _, q := range question.Questions {
+
+			if len(q.Options) == 0 {
+				continue
+			}
+
+			answers =
+				append(
+					answers,
+					[]string{q.Options[0].Label},
+				)
+		}
+	}
+
+	if len(answers) !=
+		len(question.Questions) {
+
+		// Not every question can be answered (no options and
+		// no user reply) - reject so the step fails cleanly.
+		_ = client.RejectQuestion(
+			context.Background(),
+			directory,
+			question.RequestID,
+		)
+
+		return nil, fmt.Errorf(
+			"opencode question %s timed out",
+			question.RequestID,
+		)
+	}
+
+	graph.EmitEvent(
+		ctx,
+		graph.Event{
+			Time: time.Now(),
+
+			Type: graph.EventAgentQuestionAnswer,
+
+			AgentID: w.ID(),
+
+			Data: map[string]any{
+				"requestId": question.RequestID,
+
+				"answers": answers,
+			},
+		},
+	)
+
+	if err := client.ReplyQuestion(
+		context.Background(),
+		directory,
+		question.RequestID,
+		answers,
+	); err != nil {
+		return nil, err
+	}
+
+	clarifications :=
+		make([]Clarification, 0, len(question.Questions))
+
+	for i, q := range question.Questions {
+
+		if i >= len(answers) {
+			break
+		}
+
+		clarifications =
+			append(
+				clarifications,
+				Clarification{
+					Question: q.Question,
+
+					Header: q.Header,
+
+					Answers: answers[i],
+				},
+			)
+	}
+
+	return clarifications, nil
+}
+
+// isQuestionEvent reports whether an event type represents a pending
+// clarifying question from the agent.
+func isQuestionEvent(
+	eventType string,
+) bool {
+
+	switch eventType {
+	case "question.v2.asked",
+		"question.asked":
+		return true
+
+	default:
+		return false
+	}
+}
+
+// sessionRetryError returns a formatted provider-error message when the
+// event is a session.status retry event (emitted while opencode retries
+// a failed provider call, e.g. a rate limit), otherwise "".
+func sessionRetryError(
+	event ServerEvent,
+) string {
+
+	if event.Type != "session.status" {
+		return ""
+	}
+
+	status, _ :=
+		event.Properties["status"].(map[string]any)
+
+	if status == nil ||
+		status["type"] != "retry" {
+		return ""
+	}
+
+	message, _ :=
+		status["message"].(string)
+
+	if message == "" {
+		message = "provider error"
+	}
+
+	attempt, _ :=
+		status["attempt"].(float64)
+
+	return fmt.Sprintf(
+		"opencode provider error (retry %d): %s",
+		int(attempt),
+		message,
+	)
+}
+
+// isSessionError reports whether an event type signals a failed
+// session or step (e.g. a provider error or rate limit).
+func isSessionError(
+	eventType string,
+) bool {
+
+	switch eventType {
+	case "session.error",
+		"session.next.step.failed":
+		return true
+
+	default:
+		return false
+	}
+}
+
+// sessionErrorMessage extracts a readable message from a session
+// error event's properties.
+func sessionErrorMessage(
+	event ServerEvent,
+) string {
+
+	raw, ok :=
+		event.Properties["error"]
+
+	if !ok {
+		return "unknown error"
+	}
+
+	switch value := raw.(type) {
+
+	case string:
+		if value != "" {
+			return value
+		}
+
+	case map[string]any:
+
+		if message, ok :=
+			value["message"].(string); ok &&
+			message != "" {
+
+			return message
+		}
+
+		if data, ok :=
+			value["data"].(map[string]any); ok {
+
+			if message, ok :=
+				data["message"].(string); ok &&
+				message != "" {
+
+				return message
+			}
+		}
+
+		if name, ok :=
+			value["name"].(string); ok &&
+			name != "" {
+
+			return name
+		}
+	}
+
+	return "unknown error"
+}
+
+// Question is a pending clarifying question extracted from an event.
+type Question struct {
+	RequestID string
+
+	SessionID string
+
+	Questions []QuestionInfo
+}
+
+// Clarification records a user's answer to a clarifying question so a
+// downstream agent (e.g. the coder) receives the decision instead of
+// re-asking.
+type Clarification struct {
+	Question string `json:"question"`
+
+	Header string `json:"header"`
+
+	Answers []string `json:"answers"`
+}
+
+// QuestionInfo is a single ask within a pending question request.
+type QuestionInfo struct {
+	Question string `json:"question"`
+
+	Header string `json:"header"`
+
+	Options []QuestionOption `json:"options"`
+
+	Multiple bool `json:"multiple"`
+
+	Custom bool `json:"custom"`
+}
+
+// QuestionOption is an answer choice for a question.
+type QuestionOption struct {
+	Label string `json:"label"`
+
+	Description string `json:"description"`
+}
+
+// questionFromEvent extracts a pending question from a server event.
+func questionFromEvent(
+	event ServerEvent,
+) *Question {
+
+	props :=
+		event.Properties
+
+	if props == nil {
+		return nil
+	}
+
+	requestID, ok :=
+		props["id"].(string)
+
+	if !ok {
+		return nil
+	}
+
+	sessionID, _ :=
+		props["sessionID"].(string)
+
+	raw, err :=
+		json.Marshal(props["questions"])
+
+	if err != nil {
+		return nil
+	}
+
+	var questions []QuestionInfo
+
+	if err :=
+		json.Unmarshal(raw, &questions); err != nil {
+
+		return nil
+	}
+
+	return &Question{
+		RequestID: requestID,
+
+		SessionID: sessionID,
+
+		Questions: questions,
+	}
 }
 
 // buildPrompt combines the standing instructions with the run task.
@@ -539,6 +1018,60 @@ func (w *Worker) buildPrompt(
 		)
 	}
 
+	if feedback, ok :=
+		state["plan_feedback"].(string); ok &&
+		feedback != "" {
+
+		fmt.Fprintf(
+			&builder,
+			"User requested changes to the plan: %s\n",
+			feedback,
+		)
+	}
+
+	if raw, ok :=
+		state["clarifications"].([]Clarification); ok &&
+		len(raw) > 0 {
+
+		builder.WriteString(
+			"\nUser clarifications (already answered - do not ask again):\n",
+		)
+
+		for _, c := range raw {
+
+			builder.WriteString("- ")
+
+			if c.Header != "" {
+				fmt.Fprintf(
+					&builder,
+					"%s: ",
+					c.Header,
+				)
+			}
+
+			if c.Question != "" {
+				builder.WriteString(
+					c.Question,
+				)
+			}
+
+			builder.WriteString(
+				" -> ",
+			)
+
+			builder.WriteString(
+				strings.Join(
+					c.Answers,
+					", ",
+				),
+			)
+
+			builder.WriteString(
+				"\n",
+			)
+		}
+	}
+
 	return builder.String()
 }
 
@@ -586,6 +1119,13 @@ type activityRecorder struct {
 
 	tools map[string]toolRecord
 
+	// partsSeen tracks message part IDs already reflected into the
+	// activity records so history polling is incremental.
+	partsSeen map[string]bool
+
+	// llmByMessage maps assistant message IDs to their live LLM state.
+	llmByMessage map[string]*llmState
+
 	// sessionID is the OpenCode session reported by the process.
 	sessionID string
 
@@ -593,6 +1133,10 @@ type activityRecorder struct {
 	// it can be surfaced when the process exits non-zero (OpenCode
 	// writes API failures to stdout as JSON, not stderr).
 	errorMessage string
+
+	// serverText accumulates assistant text deltas from the headless
+	// server's SSE stream.
+	serverText strings.Builder
 
 	textByPart map[string]string
 
@@ -614,6 +1158,8 @@ func newActivityRecorder(
 		agentExecutionID: agentExecutionID,
 		prompt:           prompt,
 		tools:            map[string]toolRecord{},
+		partsSeen:        map[string]bool{},
+		llmByMessage:     map[string]*llmState{},
 		textByPart:       map[string]string{},
 		textOrder:        []string{},
 	}
@@ -713,7 +1259,119 @@ func (r *activityRecorder) process(
 	}
 }
 
+func (r *activityRecorder) setSessionID(
+	sessionID string,
+) {
+
+	if sessionID != "" {
+		r.sessionID = sessionID
+	}
+}
+
+// processServerEvent mirrors a headless-server SSE event into the
+// graph activity records.
+func (r *activityRecorder) processServerEvent(
+	event ServerEvent,
+) {
+
+	switch event.Type {
+
+	case "session.next.step.started":
+		r.startStep()
+
+	case "session.next.step.ended":
+		r.finishStep()
+
+	case "session.next.text.delta":
+		delta, _ :=
+			event.Properties["delta"].(string)
+
+		if delta == "" {
+			return
+		}
+
+		r.appendText(delta)
+		r.serverText.WriteString(delta)
+
+	case "session.next.tool.called":
+		name, _ :=
+			event.Properties["tool"].(string)
+
+		callID, _ :=
+			event.Properties["callID"].(string)
+
+		input, _ :=
+			event.Properties["input"].(map[string]any)
+
+		r.startTool(
+			name,
+			callID,
+			input,
+		)
+
+	case "session.next.tool.success":
+		callID, _ :=
+			event.Properties["callID"].(string)
+
+		r.finishTool(
+			callID,
+			toolOutput(event.Properties),
+			nil,
+		)
+
+	case "session.next.tool.failed":
+		callID, _ :=
+			event.Properties["callID"].(string)
+
+		r.finishTool(
+			callID,
+			"",
+			fmt.Errorf(
+				"opencode tool failed",
+			),
+		)
+	}
+}
+
+// toolOutput extracts a readable output string from a tool success
+// event.
+func toolOutput(
+	props map[string]any,
+) string {
+
+	if props == nil {
+		return ""
+	}
+
+	switch value :=
+		props["content"].(type) {
+
+	case []any:
+		return fmt.Sprintf(
+			"%v",
+			value,
+		)
+	}
+
+	if result, ok :=
+		props["result"]; ok {
+
+		return fmt.Sprintf(
+			"%v",
+			result,
+		)
+	}
+
+	return ""
+}
+
 func (r *activityRecorder) startStep() {
+
+	// Guard against a duplicate step-started (e.g. the same event
+	// delivered on both the directory and session streams).
+	if r.stepStarted {
+		return
+	}
 
 	r.steps++
 
@@ -881,6 +1539,12 @@ func (r *activityRecorder) startTool(
 	input map[string]any,
 ) {
 
+	// Guard against a duplicate tool-started for the same call.
+	if _, ok :=
+		r.tools[callID]; ok {
+		return
+	}
+
 	r.activitySeq++
 
 	activity :=
@@ -984,6 +1648,370 @@ func (r *activityRecorder) finishTool(
 	)
 }
 
+// hasRecorded reports whether any activity was recorded from the live
+// SSE stream.
+func (r *activityRecorder) hasRecorded() bool {
+
+	return r.activitySeq > 0
+}
+
+// messagePart is a decoded part of a completed assistant message.
+type messagePart struct {
+	ID string `json:"id"`
+
+	Type string `json:"type"`
+
+	Text string `json:"text"`
+
+	Synthetic bool `json:"synthetic"`
+
+	Tool string `json:"tool"`
+
+	CallID string `json:"callID"`
+
+	// State is kept as a generic map so a tool part never fails to
+	// decode regardless of how the provider shapes input/output.
+	State map[string]any `json:"state"`
+}
+
+func partStatus(state map[string]any) string {
+	value, _ := state["status"].(string)
+	return value
+}
+
+func partInput(state map[string]any) map[string]any {
+	value, _ := state["input"].(map[string]any)
+	return value
+}
+
+func partOutput(state map[string]any) string {
+	switch value := state["output"].(type) {
+	case string:
+		return value
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", value)
+	}
+}
+
+func partError(state map[string]any) string {
+	value, _ := state["error"].(string)
+	return value
+}
+
+// llmState tracks a live assistant message's LLM activity while its
+// text and reasoning grow.
+type llmState struct {
+	activityID string
+
+	callID string
+
+	response strings.Builder
+
+	reasoning strings.Builder
+
+	finalized bool
+}
+
+// recordParts builds activity records from a completed assistant
+// message's parts (text + tool calls), used as a fallback when the SSE
+// stream did not deliver the live session.next.* events.
+func (r *activityRecorder) recordParts(
+	parts json.RawMessage,
+) {
+
+	if r.hasRecorded() ||
+		len(parts) == 0 {
+		return
+	}
+
+	var list []messagePart
+
+	if err :=
+		json.Unmarshal(parts, &list); err != nil {
+		return
+	}
+
+	var text strings.Builder
+
+	for _, part := range list {
+
+		if part.Type == "text" {
+			text.WriteString(part.Text)
+		}
+	}
+
+	r.startStep()
+
+	if text.Len() > 0 {
+		r.appendText(text.String())
+	}
+
+	r.finishStep()
+
+	for _, part := range list {
+
+		if part.Type != "tool" ||
+			part.State == nil {
+			continue
+		}
+
+		r.startTool(
+			part.Tool,
+			part.CallID,
+			partInput(part.State),
+		)
+
+		if partStatus(part.State) == "error" {
+
+			r.finishTool(
+				part.CallID,
+				"",
+				fmt.Errorf(
+					"%s",
+					partError(part.State),
+				),
+			)
+		} else {
+
+			r.finishTool(
+				part.CallID,
+				partOutput(part.State),
+				nil,
+			)
+		}
+	}
+}
+
+// ensureLLM creates the LLM activity and call for an assistant message
+// if it does not exist yet.
+func (r *activityRecorder) ensureLLM(
+	messageID string,
+) *llmState {
+
+	if st, ok :=
+		r.llmByMessage[messageID]; ok {
+		return st
+	}
+
+	r.activitySeq++
+
+	activity :=
+		r.run.StartAgentActivity(
+			r.agentExecutionID,
+			r.activitySeq,
+			graph.ActivityLLM,
+		)
+
+	sequence := r.llmSeq
+	r.llmSeq++
+
+	messages :=
+		[]graph.MessageRecord(nil)
+
+	if r.prompt != "" {
+		messages =
+			[]graph.MessageRecord{
+				{
+					Role:    "user",
+					Content: r.prompt,
+				},
+			}
+	}
+
+	call :=
+		r.run.StartLLMCall(
+			r.agentExecutionID,
+			activity.ID,
+			sequence,
+			messages,
+		)
+
+	st := &llmState{
+		activityID: activity.ID,
+		callID:     call.ID,
+	}
+
+	r.llmByMessage[messageID] = st
+
+	graph.EmitEvent(
+		r.ctx,
+		graph.Event{
+			Time: time.Now(),
+
+			Type: graph.EventLLMStarted,
+
+			AgentID: r.agentID,
+
+			Data: map[string]any{
+				"agentExecutionId": r.agentExecutionID,
+
+				"activityId": activity.ID,
+
+				"llmCallId": call.ID,
+
+				"sequence": sequence,
+			},
+		},
+	)
+
+	return st
+}
+
+// updateLLM pushes the latest response + reasoning to the run so the UI
+// shows the assistant text as it streams.
+func (r *activityRecorder) updateLLM(
+	st *llmState,
+) {
+
+	r.run.UpdateLLMCallResponse(
+		st.callID,
+		st.response.String(),
+		st.reasoning.String(),
+	)
+}
+
+// syncMessages reflects the session message history into the activity
+// records incrementally (live text, reasoning, and tool calls).
+func (r *activityRecorder) syncMessages(
+	messages []SessionMessage,
+) {
+
+	for _, message := range messages {
+
+		if message.Info.Role != "assistant" {
+			continue
+		}
+
+		for _, raw := range message.Parts {
+
+			var part messagePart
+
+			if err :=
+				json.Unmarshal(raw, &part); err != nil {
+				continue
+			}
+
+			if part.ID == "" ||
+				r.partsSeen[part.ID] {
+				continue
+			}
+
+			r.partsSeen[part.ID] = true
+
+			switch part.Type {
+
+			case "text":
+
+				if part.Synthetic {
+					continue
+				}
+
+				st :=
+					r.ensureLLM(message.Info.ID)
+
+				st.response.WriteString(part.Text)
+
+				r.updateLLM(st)
+
+			case "reasoning":
+
+				st :=
+					r.ensureLLM(message.Info.ID)
+
+				st.reasoning.WriteString(part.Text)
+
+				r.updateLLM(st)
+
+			case "tool":
+
+				if part.State == nil {
+					continue
+				}
+
+				r.ensureLLM(message.Info.ID)
+
+				r.startTool(
+					part.Tool,
+					part.CallID,
+					partInput(part.State),
+				)
+
+				switch partStatus(part.State) {
+
+				case "error":
+					r.finishTool(
+						part.CallID,
+						"",
+						fmt.Errorf(
+							"%s",
+							partError(part.State),
+						),
+					)
+
+				case "completed":
+					r.finishTool(
+						part.CallID,
+						partOutput(part.State),
+						nil,
+					)
+				}
+			}
+		}
+	}
+}
+
+// finalize completes all open LLM activities and tool calls once the
+// message finishes.
+func (r *activityRecorder) finalize() {
+
+	for _, st := range r.llmByMessage {
+
+		if st.finalized {
+			continue
+		}
+
+		st.finalized = true
+
+		r.run.CompleteLLMCall(
+			st.callID,
+			st.response.String(),
+			"",
+			nil,
+		)
+
+		r.run.CompleteAgentActivity(
+			st.activityID,
+			nil,
+		)
+
+		graph.EmitEvent(
+			r.ctx,
+			graph.Event{
+				Time: time.Now(),
+
+				Type: graph.EventLLMCompleted,
+
+				AgentID: r.agentID,
+			},
+		)
+	}
+
+	// Complete any tool calls still open (a tool reported running and
+	// never completed in the history).
+	for callID, record := range r.tools {
+
+		_ = record
+
+		r.finishTool(
+			callID,
+			"",
+			nil,
+		)
+	}
+}
+
 // accumulatePart stores the assistant text for the final output,
 // accepting either an appended delta or a growing full snapshot.
 func (r *activityRecorder) accumulatePart(
@@ -1036,39 +2064,4 @@ func (r *activityRecorder) output() (string, string) {
 	}
 
 	return r.sessionID, builder.String()
-}
-
-func suffixMessage(
-	message string,
-) string {
-
-	if message == "" {
-		return ""
-	}
-
-	return ": " + message
-}
-
-// readAll reads the full content of a file starting at offset zero.
-func readAll(
-	file *os.File,
-) string {
-
-	if _, err :=
-		file.Seek(
-			0,
-			io.SeekStart,
-		); err != nil {
-
-		return ""
-	}
-
-	data, err :=
-		io.ReadAll(file)
-
-	if err != nil {
-		return ""
-	}
-
-	return string(data)
 }

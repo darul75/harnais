@@ -51,6 +51,16 @@ VERDICT: REJECTED
 
 Then provide concise, concrete feedback listing anything that must be fixed before approval. Do not modify any files.`
 
+const planRevisionPrompt = `You are revising the plan you previously produced for the user's request in this same session.
+
+The user has requested changes to the plan. Incorporate their feedback (provided below) and output the COMPLETE revised plan in the same structured Markdown format as before: the goal, the exact steps in order, which files to create or modify and why, and which tests to run.
+
+Do not modify any files.`
+
+// maxPlanAttempts caps how many times the user may request changes to
+// the plan before the workflow proceeds to the coder anyway.
+const maxPlanAttempts = 3
+
 // OpenCodeCodingWorkflow plans, implements through the OpenCode CLI,
 // tests, security-reviews, and then reviews with a bounded retry
 // loop that sends the result back to the coder when tests fail or
@@ -101,6 +111,22 @@ func OpenCodeCodingWorkflow(
 						"plan",
 						"plan",
 					),
+				},
+			)
+
+			addNode(
+				g,
+				&graph.Node{
+					ID:     "plan_gate",
+					Worker: s.PlanGate(),
+				},
+			)
+
+			addNode(
+				g,
+				&graph.Node{
+					ID:     "plan_revision",
+					Worker: s.OpenCodePlanRevision(),
 				},
 			)
 
@@ -164,8 +190,42 @@ func OpenCodeCodingWorkflow(
 				},
 			)
 
-			addEdge(g, "planner", "coder")
 			addEdge(g, "planner", "write_plan_report")
+			addEdge(g, "write_plan_report", "plan_gate")
+
+			addConditionalEdge(
+				g,
+				"plan_gate",
+				"coder",
+				func(state graph.State) bool {
+					approved, _ :=
+						state["plan_approved"].(bool)
+
+					attempts, _ :=
+						state["plan_attempts"].(int)
+
+					return approved ||
+						attempts >= maxPlanAttempts
+				},
+			)
+
+			addConditionalEdge(
+				g,
+				"plan_gate",
+				"plan_revision",
+				func(state graph.State) bool {
+					approved, _ :=
+						state["plan_approved"].(bool)
+
+					attempts, _ :=
+						state["plan_attempts"].(int)
+
+					return !approved &&
+						attempts < maxPlanAttempts
+				},
+			)
+
+			addEdge(g, "plan_revision", "write_plan_report")
 
 			addEdge(g, "coder", "tester")
 			addEdge(g, "coder", "security")

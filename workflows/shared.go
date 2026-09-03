@@ -7,13 +7,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"harnais/agent"
 	"harnais/config"
 	"harnais/graph"
 	"harnais/llm"
-	"harnais/workflows/opencode"
 	"harnais/tools"
+	"harnais/workflows/opencode"
 )
 
 // Shared holds reusable node/worker builders so each workflow
@@ -22,16 +23,23 @@ type Shared struct {
 	workspace *tools.Workspace
 
 	store *config.Store
+
+	// QuestionHub dispatches user answers to workers blocked on an
+	// OpenCode clarifying question.
+	QuestionHub *graph.QuestionHub
 }
 
 func NewShared(
 	workspace *tools.Workspace,
 	store *config.Store,
+	questionHub *graph.QuestionHub,
 ) *Shared {
 
 	return &Shared{
 		workspace: workspace,
 		store:     store,
+
+		QuestionHub: questionHub,
 	}
 }
 
@@ -168,6 +176,13 @@ func (s *Shared) OpenCodeCoder(
 			"opencode",
 			"model",
 		),
+
+		ServerURL: s.store.Get(
+			"opencode",
+			"serverUrl",
+		),
+
+		QuestionHub: s.QuestionHub,
 	}
 }
 
@@ -194,6 +209,13 @@ func (s *Shared) OpenCodePlanner(
 		ReadOnly: true,
 
 		OutputKey: "plan",
+
+		ServerURL: s.store.Get(
+			"opencode",
+			"serverUrl",
+		),
+
+		QuestionHub: s.QuestionHub,
 	}
 }
 
@@ -218,6 +240,13 @@ func (s *Shared) OpenCodeReviewer(
 		),
 
 		ReadOnly: true,
+
+		ServerURL: s.store.Get(
+			"opencode",
+			"serverUrl",
+		),
+
+		QuestionHub: s.QuestionHub,
 	}
 }
 
@@ -692,6 +721,223 @@ func (s *Shared) ReviewGate() *graph.FuncWorker {
 			}, nil
 		},
 	)
+}
+
+// OpenCodePlanRevision resumes the planner's existing OpenCode session
+// with the user's requested plan changes, so the agent keeps its full
+// context while producing a revised plan.
+func (s *Shared) OpenCodePlanRevision() *opencode.Worker {
+
+	return &opencode.Worker{
+		AgentID: "opencode-planner",
+
+		Prompt: planRevisionPrompt,
+
+		Dir: s.workspace.Root,
+
+		Model: s.store.Get(
+			"opencode",
+			"plannerModel",
+		),
+
+		ReadOnly: true,
+
+		OutputKey: "plan",
+
+		Resume: true,
+
+		ServerURL: s.store.Get(
+			"opencode",
+			"serverUrl",
+		),
+
+		QuestionHub: s.QuestionHub,
+	}
+}
+
+// PlanGate asks the user to approve the plan (or request changes)
+// before the coder runs. Change requests are fed back to the planner
+// via state["plan_feedback"] for a bounded number of rounds.
+func (s *Shared) PlanGate() *graph.FuncWorker {
+
+	return graph.NewFuncWorker(
+		"plan_gate",
+
+		func(
+			ctx context.Context,
+			state graph.State,
+		) (graph.State, error) {
+
+			plan, _ :=
+				state["plan"].(string)
+
+			attempt := 0
+
+			if value, ok :=
+				state["plan_attempts"]; ok {
+
+				attempt =
+					value.(int)
+			}
+
+			attempt++
+
+			executionContext, ok :=
+				graph.GetExecutionContext(ctx)
+
+			if !ok {
+				return nil, fmt.Errorf(
+					"plan_gate: missing execution context",
+				)
+			}
+
+			// Without a hub (headless) auto-approve so the run
+			// is not blocked waiting for a user.
+			approved :=
+				s.QuestionHub == nil
+
+			feedback := ""
+
+			if s.QuestionHub != nil {
+
+				answers, answered :=
+					s.askUser(
+						ctx,
+						executionContext.RunID,
+						fmt.Sprintf("plan_gate_approve_%d", attempt),
+						[]opencode.QuestionInfo{
+							{
+								Question: plan,
+
+								Header: "Plan review",
+
+								Options: []opencode.QuestionOption{
+									{Label: "Approve"},
+
+									{Label: "Request changes"},
+								},
+							},
+						},
+					)
+
+				if !answered {
+					return nil, fmt.Errorf(
+						"plan_gate: no answer for plan approval",
+					)
+				}
+
+				if len(answers) > 0 &&
+					len(answers[0]) > 0 &&
+					answers[0][0] == "Approve" {
+
+					approved = true
+				} else {
+
+					text, got :=
+						s.askUser(
+							ctx,
+							executionContext.RunID,
+							fmt.Sprintf("plan_gate_changes_%d", attempt),
+							[]opencode.QuestionInfo{
+								{
+									Question: "Describe the changes you want to make to the plan:",
+
+									Header: "Changes",
+
+									Custom: true,
+								},
+							},
+						)
+
+					if !got {
+						return nil, fmt.Errorf(
+							"plan_gate: no changes provided",
+						)
+					}
+
+					if len(text) > 0 &&
+						len(text[0]) > 0 {
+
+						feedback =
+							strings.TrimSpace(
+								text[0][0],
+							)
+					}
+
+					// No changes specified -> treat as approval.
+					approved =
+						feedback == ""
+				}
+			}
+
+			fmt.Printf(
+				"[plan_gate] Attempt %d: approved=%v\n",
+				attempt,
+				approved,
+			)
+
+			return graph.State{
+				"plan_approved": approved,
+
+				"plan_feedback": feedback,
+
+				"plan_attempts": attempt,
+			}, nil
+		},
+	)
+}
+
+// askUser surfaces a question through the run UI and blocks until the
+// user answers via the HTTP answer endpoint. Returns the selected
+// labels (one []string per question) or ok=false if no answer arrived.
+func (s *Shared) askUser(
+	ctx context.Context,
+	runID string,
+	requestID string,
+	questions []opencode.QuestionInfo,
+) ([][]string, bool) {
+
+	if s.QuestionHub == nil {
+		return nil, false
+	}
+
+	ch, cleanup :=
+		s.QuestionHub.Register(
+			runID,
+			requestID,
+		)
+
+	graph.EmitEvent(
+		ctx,
+		graph.Event{
+			Time: time.Now(),
+
+			Type: graph.EventAgentQuestion,
+
+			AgentID: "harnais",
+
+			Data: map[string]any{
+				"requestId": requestID,
+
+				"questions": questions,
+			},
+		},
+	)
+
+	defer cleanup()
+
+	select {
+
+	case <-ctx.Done():
+		return nil, false
+
+	case got, ok := <-ch:
+		if !ok {
+			return nil, false
+		}
+
+		return got, true
+	}
 }
 
 // ------------------------------------------------------------

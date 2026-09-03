@@ -113,6 +113,7 @@ export type LLMCall = {
   sequence: number;
   status: NodeStatus;
   messages?: MessageRecord[];
+  reasoning?: string;
   response?: string;
   requestedTool?: string;
   startedAt: string;

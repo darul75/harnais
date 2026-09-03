@@ -90,6 +90,10 @@ type Server struct {
 	Workflows func() []WorkflowInfo
 
 	GetWorkflow func(id string) (*WorkflowDetail, bool)
+
+	// Questions dispatches user answers to workers blocked on an
+	// OpenCode clarifying question.
+	Questions *graph.QuestionHub
 }
 
 func NewServer(
@@ -100,6 +104,7 @@ func NewServer(
 	startRun StartRunFunc,
 	workflows func() []WorkflowInfo,
 	getWorkflow func(id string) (*WorkflowDetail, bool),
+	questionHub *graph.QuestionHub,
 ) *Server {
 	return &Server{
 		Bus: bus,
@@ -115,6 +120,8 @@ func NewServer(
 		Workflows: workflows,
 
 		GetWorkflow: getWorkflow,
+
+		Questions: questionHub,
 	}
 }
 
@@ -237,6 +244,11 @@ func (s *Server) Handler() http.Handler {
 		s.events,
 	)
 
+	mux.HandleFunc(
+		"POST /api/runs/{runID}/question/{requestID}/reply",
+		s.answerQuestion,
+	)
+
 	return withCORS(mux)
 }
 
@@ -300,6 +312,63 @@ func (s *Server) createRun(
 			"runId": run.ID,
 			"task":  request.Task,
 		},
+	)
+}
+
+// answerQuestion delivers a user's answer to a worker blocked on an
+// OpenCode clarifying question, resuming that run's opencode session.
+func (s *Server) answerQuestion(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+
+	var request struct {
+		Answers [][]string `json:"answers"`
+	}
+
+	if err :=
+		json.NewDecoder(
+			r.Body,
+		).Decode(&request); err != nil {
+
+		http.Error(
+			w,
+			"invalid JSON",
+			http.StatusBadRequest,
+		)
+
+		return
+	}
+
+	if s.Questions == nil {
+		http.Error(
+			w,
+			"question hub not configured",
+			http.StatusInternalServerError,
+		)
+
+		return
+	}
+
+	delivered :=
+		s.Questions.Reply(
+			r.PathValue("runID"),
+			r.PathValue("requestID"),
+			request.Answers,
+		)
+
+	if !delivered {
+		http.Error(
+			w,
+			"question not found or already answered",
+			http.StatusNotFound,
+		)
+
+		return
+	}
+
+	w.WriteHeader(
+		http.StatusNoContent,
 	)
 }
 
@@ -635,10 +704,49 @@ func (s *Server) getSettings(
 		)
 		return
 	}
+	view :=
+		s.Settings.View()
+
+	// Offer the models the running OpenCode server exposes for the
+	// opencode provider's model fields.
+	serverURL :=
+		s.Settings.Get(
+			"opencode",
+			"serverUrl",
+		)
+
+	if models :=
+		config.OpenCodeModels(
+			serverURL,
+		); len(models) > 0 {
+
+		for i := range view.Providers {
+
+			if view.Providers[i].ID !=
+				"opencode" {
+				continue
+			}
+
+			for j := range view.Providers[i].Fields {
+
+				switch view.
+					Providers[i].Fields[j].Key {
+
+				case "model",
+					"plannerModel",
+					"reviewerModel":
+
+					view.Providers[i].
+						Fields[j].Suggestions =
+						models
+				}
+			}
+		}
+	}
 
 	writeJSON(
 		w,
-		s.Settings.View(),
+		view,
 	)
 }
 

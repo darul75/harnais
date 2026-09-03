@@ -352,7 +352,19 @@ export function ExecutionDetails({
 
                       </div>
 
-                      <details>
+                      {call.reasoning && (
+  <details>
+    <summary>
+      Reasoning
+    </summary>
+
+    <pre>
+      {call.reasoning}
+    </pre>
+  </details>
+)}
+
+<details>
 
                         <summary>
                           Messages / response

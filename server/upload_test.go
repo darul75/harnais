@@ -39,6 +39,7 @@ func newUploadServer(t *testing.T) (*httptest.Server, *tools.Workspace) {
 		func(id string) (*WorkflowDetail, bool) {
 			return nil, false
 		},
+		graph.NewQuestionHub(),
 	)
 
 	server := httptest.NewServer(api.Handler())
@@ -244,9 +245,9 @@ func TestGetUploadServesPDF(t *testing.T) {
 
 	if got :=
 		response.Header.Get("Content-Type"); !strings.HasPrefix(
-			got,
-			"application/pdf",
-		) {
+		got,
+		"application/pdf",
+	) {
 
 		t.Errorf("expected application/pdf, got %q", got)
 	}

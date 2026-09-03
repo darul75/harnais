@@ -564,6 +564,32 @@ func (r *Run) CompleteLLMCall(
 	}
 }
 
+// UpdateLLMCallResponse refreshes a running LLM call's growing
+// response and reasoning without finalizing it, used for live
+// streaming of the assistant text.
+func (r *Run) UpdateLLMCallResponse(
+	llmCallID string,
+	response string,
+	reasoning string,
+) {
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, call := range r.LLMCalls {
+
+		if call.ID != llmCallID {
+			continue
+		}
+
+		call.Response = response
+
+		call.Reasoning = reasoning
+
+		return
+	}
+}
+
 // ------------------------------------------------------------
 // Tool calls
 // ------------------------------------------------------------

@@ -165,6 +165,32 @@ export function createEventSource(
   );
 }
 
+export async function replyQuestion(
+  runId: string,
+  requestId: string,
+  answers: string[][],
+) {
+  const response = await fetch(
+    `${API_BASE}/api/runs/${encodeURIComponent(runId)}/question/${encodeURIComponent(requestId)}/reply`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        answers,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new ApiError(
+      await response.text(),
+      response.status,
+    );
+  }
+}
+
 export async function getSettings() {
   const response = await fetch(
     `${API_BASE}/api/settings`,
