@@ -449,6 +449,11 @@ func (w *Worker) runOpenCode(
 				readAll(stderrFile),
 			)
 
+		if message == "" {
+			message =
+				recorder.errorMessage
+		}
+
 		return graph.WorkerResult{}, fmt.Errorf(
 			"opencode: %v%s",
 			waitErr,
@@ -572,7 +577,7 @@ type activityRecorder struct {
 	toolSeq int
 
 	// Current LLM step (one per OpenCode step).
-	stepStarted   bool
+	stepStarted    bool
 	stepActivityID string
 	stepLLMCallID  string
 	stepText       strings.Builder
@@ -581,7 +586,13 @@ type activityRecorder struct {
 
 	tools map[string]toolRecord
 
+	// sessionID is the OpenCode session reported by the process.
 	sessionID string
+
+	// errorMessage captures the most recent OpenCode error event so
+	// it can be surfaced when the process exits non-zero (OpenCode
+	// writes API failures to stdout as JSON, not stderr).
+	errorMessage string
 
 	textByPart map[string]string
 
@@ -617,6 +628,13 @@ func (r *activityRecorder) process(
 		Type      string `json:"type"`
 		SessionID string `json:"sessionID"`
 
+		Error *struct {
+			Message string `json:"message"`
+			Data    struct {
+				Message string `json:"message"`
+			} `json:"data"`
+		} `json:"error"`
+
 		Part struct {
 			ID     string `json:"id"`
 			Type   string `json:"type"`
@@ -646,6 +664,24 @@ func (r *activityRecorder) process(
 	}
 
 	switch event.Type {
+
+	case "error":
+		if event.Error == nil {
+			return
+		}
+
+		message :=
+			event.Error.Data.Message
+
+		if message == "" {
+			message =
+				event.Error.Message
+		}
+
+		if message != "" {
+			r.errorMessage =
+				strings.TrimSpace(message)
+		}
 
 	case "step_start":
 		r.startStep()

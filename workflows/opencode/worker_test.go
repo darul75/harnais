@@ -260,8 +260,45 @@ func TestRecorderToolError(t *testing.T) {
 	}
 }
 
-func TestWorkerIDDefault(t *testing.T) {
+func TestRecorderCapturesErrorMessage(t *testing.T) {
 
+	recorder, _ :=
+		testRecorder(t)
+
+	recorder.process(
+		[]byte(`{"type":"error","sessionID":"s","error":{"name":"APIError","data":{"message":"Your workspace has reached its monthly spending limit","statusCode":401}}}`),
+	)
+
+	if recorder.errorMessage !=
+		"Your workspace has reached its monthly spending limit" {
+
+		t.Errorf(
+			"expected nested data message, got %q",
+			recorder.errorMessage,
+		)
+	}
+}
+
+func TestRecorderCapturesTopLevelErrorMessage(t *testing.T) {
+
+	recorder, _ :=
+		testRecorder(t)
+
+	recorder.process(
+		[]byte(`{"type":"error","error":{"message":"top level boom"}}`),
+	)
+
+	if recorder.errorMessage !=
+		"top level boom" {
+
+		t.Errorf(
+			"expected top level message, got %q",
+			recorder.errorMessage,
+		)
+	}
+}
+
+func TestWorkerIDDefault(t *testing.T) {
 	if got := (&Worker{}).ID(); got != "opencode" {
 		t.Errorf(
 			"expected default id, got %q",

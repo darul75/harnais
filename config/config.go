@@ -13,8 +13,8 @@ import (
 	"sync"
 
 	"harnais/agent"
-	"harnais/tools/imapmail"
 	"harnais/llm"
+	"harnais/tools/imapmail"
 )
 
 // FieldType describes how a setting is edited in the UI.
@@ -133,6 +133,7 @@ var providers = []Provider{
 				Placeholder: "opencode/deepseek-v4-flash",
 
 				Suggestions: []string{
+					"opencode/big-pickle",
 					"opencode/deepseek-v4-flash",
 					"opencode/gemini-3-flash",
 					"opencode/claude-haiku-4-5",
@@ -146,6 +147,7 @@ var providers = []Provider{
 				Placeholder: "opencode/deepseek-v4-flash",
 
 				Suggestions: []string{
+					"opencode/big-pickle",
 					"opencode/deepseek-v4-flash",
 					"opencode/gemini-3-flash",
 					"opencode/claude-haiku-4-5",
@@ -159,6 +161,7 @@ var providers = []Provider{
 				Placeholder: "opencode/deepseek-v4-flash",
 
 				Suggestions: []string{
+					"opencode/big-pickle",
 					"opencode/deepseek-v4-flash",
 					"opencode/gemini-3-flash",
 					"opencode/claude-haiku-4-5",
@@ -680,11 +683,10 @@ func testOpenCodeModel(
 		)
 	}
 
-	for _, line := range
-		strings.Split(
-			string(output),
-			"\n",
-		) {
+	for _, line := range strings.Split(
+		string(output),
+		"\n",
+	) {
 
 		if strings.TrimSpace(line) ==
 			model {

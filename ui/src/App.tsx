@@ -956,10 +956,17 @@ function App() {
                               ? "graph-edge graph-edge-taken"
                               : "graph-edge";
 
-                          const edgeMod =
-                            edge.conditional
-                              ? " graph-edge-conditional"
-                              : "";
+                          const edgeMod = "";
+
+                          // Backward edges (retry/feedback loops) point back to an
+                          // earlier column. Skip rendering them for
+                          // now to keep the graph clean.
+                          const backward =
+                            to.x < from.x;
+
+                          if (backward) {
+                            return null;
+                          }
 
                           return (
                             <g
