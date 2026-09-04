@@ -288,16 +288,16 @@ export function WorkflowView({
                   }
 
                   const x1 =
-                    from.x + 90;
+                    from.x + 70;
 
                   const y1 =
-                    from.y + 36;
+                    from.y + 28;
 
                   const x2 =
-                    to.x + 90;
+                    to.x + 70;
 
                   const y2 =
-                    to.y + 36;
+                    to.y + 28;
 
                   return (
                     <g
@@ -362,20 +362,20 @@ export function WorkflowView({
                         className={`wf-node wf-node-${def?.kind ?? "worker"}`}
                         x={node.x}
                         y={node.y}
-                        width="180"
-                        height="72"
-                        rx="10"
+                        width="140"
+                        height="56"
+                        rx="6"
                       />
 
                       <text
                         className="node-title"
                         x={
                           node.x +
-                          90
+                          70
                         }
                         y={
                           node.y +
-                          28
+                          24
                         }
                         textAnchor="middle"
                       >
@@ -386,11 +386,11 @@ export function WorkflowView({
                         className="wf-node-kind"
                         x={
                           node.x +
-                          90
+                          70
                         }
                         y={
                           node.y +
-                          50
+                          42
                         }
                         textAnchor="middle"
                       >
@@ -659,25 +659,25 @@ function viewBoxFor(
   nodes: LayoutNode[],
 ) {
   if (!nodes.length) {
-    return "0 0 900 400";
+    return "0 0 600 300";
   }
 
   const maxX =
     Math.max(
       ...nodes.map(
         (node) =>
-          node.x + 180,
+          node.x + 140,
       ),
-      900,
+      600,
     );
 
   const maxY =
     Math.max(
       ...nodes.map(
         (node) =>
-          node.y + 72,
+          node.y + 56,
       ),
-      400,
+      300,
     );
 
   return `0 0 ${maxX + 20} ${maxY + 20}`;

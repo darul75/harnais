@@ -76,7 +76,7 @@ export function GraphView({
     <div className="graph-container">
 
       <svg
-        viewBox="0 0 900 540"
+        viewBox="0 0 600 400"
         className="graph-svg"
       >
 
@@ -114,9 +114,9 @@ export function GraphView({
             return (
               <line
                 key={edge.id}
-                x1={from.x + 90}
-                y1={from.y + 45}
-                x2={to.x + 90}
+                x1={from.x + 70}
+                y1={from.y + 35}
+                x2={to.x + 70}
                 y2={to.y}
                 stroke="currentColor"
                 strokeWidth="2"
@@ -170,17 +170,17 @@ export function GraphView({
               >
 
                 <rect
-                  width="180"
-                  height="80"
-                  rx="10"
+                  width="140"
+                  height="56"
+                  rx="6"
                   className={
                     `node node-${status}`
                   }
                 />
 
                 <text
-                  x="90"
-                  y="30"
+                  x="70"
+                  y="24"
                   textAnchor="middle"
                   className="node-title"
                 >
@@ -188,8 +188,8 @@ export function GraphView({
                 </text>
 
                 <text
-                  x="90"
-                  y="54"
+                  x="70"
+                  y="42"
                   textAnchor="middle"
                   className="node-status"
                 >

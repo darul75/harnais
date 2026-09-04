@@ -555,13 +555,13 @@ button:disabled {
 
   overflow: auto;
 
-  max-height: 70vh;
+  max-height: 50vh;
 }
 
 .graph-svg {
   width: 100%;
 
-  min-width: 800px;
+  min-width: 600px;
 
   height: auto;
 
@@ -633,7 +633,7 @@ button:disabled {
 .node-title {
   fill: #f9fafb;
 
-  font-size: 12px;
+  font-size: 10px;
 
   font-weight: 400;
 }
@@ -641,7 +641,7 @@ button:disabled {
 .node-status {
   fill: #9ca3af;
 
-  font-size: 11px;
+  font-size: 9px;
 }
 
 @keyframes node-glow {

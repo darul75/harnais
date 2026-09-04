@@ -1221,18 +1221,18 @@ function App() {
                                 className={`node node-${node.status}`}
                                 x={node.x}
                                 y={node.y}
-                                width="180"
-                                height="72"
+                                width="140"
+                                height="56"
                                 rx="6"
                               />
 
                               <text
                                 className="node-title"
                                 x={
-                                  node.x + 90
+                                  node.x + 70
                                 }
                                 y={
-                                  node.y + 30
+                                  node.y + 24
                                 }
                                 textAnchor="middle"
                               >
@@ -1242,10 +1242,10 @@ function App() {
                               <text
                                 className="node-status"
                                 x={
-                                  node.x + 90
+                                  node.x + 70
                                 }
                                 y={
-                                  node.y + 50
+                                  node.y + 42
                                 }
                                 textAnchor="middle"
                               >
@@ -1345,18 +1345,18 @@ function App() {
                                 className={`node node-${node.status}`}
                                 x={node.x}
                                 y={node.y}
-                                width="100"
-                                height="64"
-                                rx="8"
+                                width="80"
+                                height="48"
+                                rx="6"
                               />
 
                               <text
                                 className="node-title"
                                 x={
-                                  node.x + 50
+                                  node.x + 40
                                 }
                                 y={
-                                  node.y + 27
+                                  node.y + 21
                                 }
                                 textAnchor="middle"
                               >
@@ -1366,10 +1366,10 @@ function App() {
                               <text
                                 className="node-status"
                                 x={
-                                  node.x + 50
+                                  node.x + 40
                                 }
                                 y={
-                                  node.y + 47
+                                  node.y + 35
                                 }
                                 textAnchor="middle"
                               >
@@ -4430,13 +4430,8 @@ function buildGraphLayout(
           status:
             node.status,
 
-          x:
-            40 +
-            column * 180,
-
-          y:
-            40 +
-            index * 100,
+          x: 40 + column * 140,
+          y: 40 + index * 70,
         });
       },
     );
@@ -4452,55 +4447,55 @@ function runViewBoxFor(
   nodes: GraphLayoutNode[],
 ) {
   if (!nodes.length) {
-    return "0 0 900 240";
+    return "0 0 600 200";
   }
 
   const maxX =
     Math.max(
       ...nodes.map(
         (node) =>
-          node.x + 100,
+          node.x + 80,
       ),
-      900,
+      600,
     );
 
   const maxY =
     Math.max(
       ...nodes.map(
         (node) =>
-          node.y + 64,
+          node.y + 48,
       ),
-      240,
+      200,
     );
 
   return `0 0 ${maxX + 20} ${maxY + 20}`;
 }
 
 // blueprintViewBoxFor fits the static workflow blueprint (nodes are
-// 180x72) so the whole graph is visible as soon as a run starts.
+// 140x56) so the whole graph is visible as soon as a run starts.
 function blueprintViewBoxFor(
   nodes: BlueprintGraphNode[],
 ) {
   if (!nodes.length) {
-    return "0 0 900 240";
+    return "0 0 600 200";
   }
 
   const maxX =
     Math.max(
       ...nodes.map(
         (node) =>
-          node.x + 180,
+          node.x + 140,
       ),
-      900,
+      600,
     );
 
   const maxY =
     Math.max(
       ...nodes.map(
         (node) =>
-          node.y + 72,
+          node.y + 56,
       ),
-      240,
+      200,
     );
 
   return `0 0 ${maxX + 20} ${maxY + 20}`;

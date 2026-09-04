@@ -13,11 +13,11 @@ export type LayoutEdge = {
 export function buildColumnLayout(
   nodes: { id: string }[],
   edges: LayoutEdge[],
-  columnWidth = 230,
-  rowHeight = 100,
+  columnWidth = 180,
+  rowHeight = 70,
   originX = 40,
   originY = 40,
-  width = 180,
+  width = 140,
 ): LayoutNode[] {
   if (!nodes.length) {
     return [];
