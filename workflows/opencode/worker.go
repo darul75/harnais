@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -124,6 +125,7 @@ var permissionRules = map[string]any{
 		"pnpm *": "allow",
 		"yarn *": "allow",
 		"grep *": "allow",
+		"rtk *":  "allow",
 		"*":      "deny",
 	},
 }
@@ -147,6 +149,7 @@ var readOnlyPermissionRules = map[string]any{
 		"pnpm *": "allow",
 		"yarn *": "allow",
 		"grep *": "allow",
+		"rtk *":  "allow",
 		"*":      "deny",
 	},
 }
@@ -258,6 +261,32 @@ func (w *Worker) runOpenCode(
 			"opencode: create workspace: %w",
 			err,
 		)
+	}
+
+	// Temporarily disable the RTK plugin so OpenCode runs raw commands
+	// without rtk rewriting. Restored via defer on function exit.
+	pluginPath := filepath.Join(os.Getenv("HOME"), ".config", "opencode", "plugins", "rtk.ts")
+	backupPath := pluginPath + ".bak"
+
+	if _, err := os.Stat(pluginPath); err == nil {
+		if err := os.Rename(pluginPath, backupPath); err != nil {
+			fmt.Printf("[rtk] warning: failed to disable RTK plugin: %v\n", err)
+		} else {
+			fmt.Println("[rtk] temporarily disabled RTK plugin for this run")
+			defer func() {
+				restoreCmd := exec.Command("rtk", "init", "-g", "--opencode")
+				if err := restoreCmd.Run(); err != nil {
+					// Fallback to direct restore
+					if _, statErr := os.Stat(backupPath); statErr == nil {
+						_ = os.Rename(backupPath, pluginPath)
+					}
+					fmt.Printf("[rtk] warning: failed to restore RTK plugin: %v\n", err)
+				} else {
+					_ = os.Remove(backupPath)
+					fmt.Println("[rtk] RTK plugin restored")
+				}
+			}()
+		}
 	}
 
 	timeoutCtx, cancel :=
