@@ -1,0 +1,257 @@
+package store
+
+import (
+	"fmt"
+	"time"
+
+	"harnais/graph"
+)
+
+func (s *RunStore) CreateRun(id, workflowID, task string, startedAt time.Time) error {
+	_, err := s.db.Exec(
+		`INSERT INTO runs (id, workflow_id, task, status, started_at) VALUES (?, ?, ?, 'running', ?)`,
+		id, workflowID, task, startedAt,
+	)
+	return err
+}
+
+func (s *RunStore) UpdateRunStatus(id string, status graph.Status, completedAt *time.Time) error {
+	_, err := s.db.Exec(
+		`UPDATE runs SET status = ?, completed_at = ? WHERE id = ?`,
+		status, optionalTime(completedAt), id,
+	)
+	return err
+}
+
+func (s *RunStore) GetRun(id string) (*RunRecord, error) {
+	row := s.db.QueryRow(
+		`SELECT id, workflow_id, task, status, started_at, completed_at FROM runs WHERE id = ?`,
+		id,
+	)
+	return scanRun(row)
+}
+
+func (s *RunStore) ListRuns() ([]RunRecord, error) {
+	rows, err := s.db.Query(
+		`SELECT id, workflow_id, task, status, started_at, completed_at FROM runs ORDER BY started_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanRuns(rows)
+}
+
+func (s *RunStore) DeleteRun(id string) error {
+	_, err := s.db.Exec(`DELETE FROM runs WHERE id = ?`, id)
+	return err
+}
+
+func (s *RunStore) AddNodeExecution(runID string, e *graph.NodeExecution) error {
+	_, err := s.db.Exec(
+		`INSERT INTO node_executions (
+			id, run_id, node_id, worker_id, attempt, status,
+			input, output, error, started_at, completed_at, triggered_by
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.ID, runID, e.NodeID, e.WorkerID, e.Attempt, e.Status,
+		toJSON(e.Input),
+		toJSON(e.Output),
+		e.Error,
+		e.StartedAt,
+		optionalTime(e.CompletedAt),
+		jsonMust(e.TriggeredBy),
+	)
+	return err
+}
+
+func (s *RunStore) UpdateNodeExecution(e *graph.NodeExecution) error {
+	_, err := s.db.Exec(
+		`UPDATE node_executions SET
+			status = ?, output = ?, error = ?, completed_at = ?
+		WHERE id = ?`,
+		e.Status,
+		toJSON(e.Output),
+		e.Error,
+		optionalTime(e.CompletedAt),
+		e.ID,
+	)
+	return err
+}
+
+func (s *RunStore) GetNodeExecutions(runID string) ([]*graph.NodeExecution, error) {
+	rows, err := s.db.Query(
+		`SELECT id, node_id, worker_id, attempt, status,
+			input, output, error, started_at, completed_at, triggered_by
+		FROM node_executions WHERE run_id = ? ORDER BY started_at ASC`,
+		runID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanNodeExecutions(rows)
+}
+
+func (s *RunStore) AddAgentExecution(runID string, e *graph.AgentExecution) error {
+	_, err := s.db.Exec(
+		`INSERT INTO agent_executions (
+			id, run_id, node_execution_id, agent_id, status,
+			started_at, completed_at, error
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.ID, runID, e.NodeExecutionID, e.AgentID, e.Status,
+		e.StartedAt,
+		optionalTime(e.CompletedAt),
+		e.Error,
+	)
+	return err
+}
+
+func (s *RunStore) UpdateAgentExecution(e *graph.AgentExecution) error {
+	_, err := s.db.Exec(
+		`UPDATE agent_executions SET status = ?, completed_at = ?, error = ? WHERE id = ?`,
+		e.Status,
+		optionalTime(e.CompletedAt),
+		e.Error,
+		e.ID,
+	)
+	return err
+}
+
+func (s *RunStore) GetAgentExecutions(runID string) ([]*graph.AgentExecution, error) {
+	rows, err := s.db.Query(
+		`SELECT id, node_execution_id, agent_id, status,
+			started_at, completed_at, error
+		FROM agent_executions WHERE run_id = ? ORDER BY started_at ASC`,
+		runID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanAgentExecutions(rows)
+}
+
+func (s *RunStore) AddLLMCall(runID string, c *graph.LLMCall) error {
+	_, err := s.db.Exec(
+		`INSERT INTO llm_calls (
+			id, run_id, agent_execution_id, sequence, status, messages,
+			reasoning, response, requested_tool, started_at, completed_at, error
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.ID, runID, c.AgentExecutionID, c.Sequence, c.Status,
+		jsonMust(c.Messages),
+		c.Reasoning,
+		c.Response,
+		c.RequestedTool,
+		c.StartedAt,
+		optionalTime(c.CompletedAt),
+		c.Error,
+	)
+	return err
+}
+
+func (s *RunStore) UpdateLLMCall(c *graph.LLMCall) error {
+	_, err := s.db.Exec(
+		`UPDATE llm_calls SET status = ?, messages = ?, reasoning = ?, response = ?,
+			requested_tool = ?, completed_at = ?, error = ?
+		WHERE id = ?`,
+		c.Status,
+		jsonMust(c.Messages),
+		c.Reasoning,
+		c.Response,
+		c.RequestedTool,
+		optionalTime(c.CompletedAt),
+		c.Error,
+		c.ID,
+	)
+	return err
+}
+
+func (s *RunStore) AddToolCall(runID string, c *graph.ToolCall) error {
+	_, err := s.db.Exec(
+		`INSERT INTO tool_calls (
+			id, run_id, agent_execution_id, sequence, tool_id, status,
+			input, output, started_at, completed_at, error
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.ID, runID, c.AgentExecutionID, c.Sequence, c.ToolID, c.Status,
+		toJSON(c.Input),
+		toJSON(c.Output),
+		c.StartedAt,
+		optionalTime(c.CompletedAt),
+		c.Error,
+	)
+	return err
+}
+
+func (s *RunStore) UpdateToolCall(c *graph.ToolCall) error {
+	_, err := s.db.Exec(
+		`UPDATE tool_calls SET status = ?, output = ?, completed_at = ?, error = ? WHERE id = ?`,
+		c.Status,
+		toJSON(c.Output),
+		optionalTime(c.CompletedAt),
+		c.Error,
+		c.ID,
+	)
+	return err
+}
+
+func (s *RunStore) AddEdgeActivation(runID string, a *graph.EdgeActivation) error {
+	_, err := s.db.Exec(
+		`INSERT INTO edge_activations (
+			id, run_id, edge_id, from_execution_id, from_node_id,
+			to_node_id, created_at, consumed_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.ID, runID, a.EdgeID, a.FromExecutionID, a.FromNodeID,
+		a.ToNodeID,
+		a.CreatedAt,
+		optionalTime(a.ConsumedAt),
+	)
+	return err
+}
+
+func (s *RunStore) GetEdgeActivations(runID string) ([]*graph.EdgeActivation, error) {
+	rows, err := s.db.Query(
+		`SELECT id, edge_id, from_execution_id, from_node_id,
+			to_node_id, created_at, consumed_at
+		FROM edge_activations WHERE run_id = ? ORDER BY created_at ASC`,
+		runID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanEdgeActivations(rows)
+}
+
+func (s *RunStore) ReconstructRun(runID string) (*graph.Run, error) {
+	detail, err := s.GetRunDetail(runID)
+	if err != nil {
+		return nil, fmt.Errorf("get run detail: %w", err)
+	}
+
+	r := &graph.Run{
+		ID: detail.RunID,
+		Status: detail.Status,
+		StartedAt: detail.StartedAt,
+		CompletedAt: detail.CompletedAt,
+		Executions: detail.NodeExecutions,
+		EdgeActivations: detail.EdgeActivations,
+		AgentExecutions: detail.AgentExecutions,
+		LLMCalls: detail.LLMCalls,
+		ToolCalls: detail.ToolCalls,
+		ActivatedNodes: make(map[string]bool),
+		State: make(graph.State),
+	}
+
+	for _, e := range detail.NodeExecutions {
+		r.ActivatedNodes[e.NodeID] = true
+		if e.Output != nil {
+			r.State.Merge(e.Output)
+		}
+	}
+
+	return r, nil
+}
