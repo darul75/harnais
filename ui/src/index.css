@@ -1812,6 +1812,8 @@ pre {
   color: #60a5fa;
 
   text-decoration: none;
+
+  cursor: pointer;
 }
 
 .markdown a:hover {

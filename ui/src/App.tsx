@@ -2859,7 +2859,19 @@ function ReportsPage({
                         {isSelected && content && (
                           <div className="reports-item-content">
                             <div className="markdown">
-                              <ReactMarkdown>{content}</ReactMarkdown>
+                              <ReactMarkdown
+                                components={{
+                                  a: (props) => (
+                                    <a
+                                      {...props}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                    />
+                                  ),
+                                }}
+                              >
+                                {content}
+                              </ReactMarkdown>
                             </div>
                           </div>
                         )}
