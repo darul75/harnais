@@ -1861,8 +1861,7 @@ func (s *Server) events(
 				w.Header().Set("Content-Type", "text/event-stream")
 				w.WriteHeader(http.StatusOK)
 				for _, e := range events {
-					data, _ := json.Marshal(e)
-					fmt.Fprintf(w, "data: %s\n\n", data)
+					writeSSE(w, e)
 				}
 				if f, ok := w.(http.Flusher); ok {
 					f.Flush()
