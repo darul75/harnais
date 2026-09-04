@@ -3174,21 +3174,17 @@ function ReportsPage({
               return (
                 <div key={runID} className="reports-run-group">
                   <div className="reports-run-header">
-                    <button
-                      type="button"
-                      className="reports-run-link"
-                      onClick={() => onSelectRun(runID)}
-                    >
-                      {runID}
-                    </button>
                     {run && (
-                      <>
-                        <RunStatus status={run.status} />
-                        <span className="reports-run-task">
-                          {run.task?.slice(0, 60) ?? runID}
-                        </span>
-                      </>
+                      <button
+                        type="button"
+                        className="reports-run-link"
+                        onClick={() => onSelectRun(runID)}
+                      >
+                        {run.task?.slice(0, 60) ?? runID}
+                      </button>
                     )}
+                    {run && <RunStatus status={run.status} />}
+                    <span className="reports-run-id">{runID}</span>
                     <button
                       type="button"
                       className="report-viewer-open-btn"
