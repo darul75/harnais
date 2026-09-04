@@ -1861,6 +1861,9 @@ function ReportsPanel({
   const [error, setError] =
     useState<string | null>(null);
 
+  const [viewerOpen, setViewerOpen] =
+    useState(false);
+
   // ------------------------------------------------------------
   // Report list: load once, then poll while the run is active
   // ------------------------------------------------------------
@@ -2048,6 +2051,17 @@ function ReportsPanel({
               All runs
             </button>
           </span>
+
+          {mode === "run" && reports && reports.length > 0 && (
+            <button
+              type="button"
+              className="report-viewer-open-btn"
+              onClick={() => setViewerOpen(true)}
+              title="Open full-screen report viewer"
+            >
+              📖 Open
+            </button>
+          )}
         </summary>
 
         <div className="reports">
@@ -2190,7 +2204,157 @@ function ReportsPanel({
           </div>
         </div>
       </details>
+
+      {viewerOpen && reports && reports.length > 0 && (
+        <ReportViewerOverlay
+          runId={runId}
+          reports={reports}
+          initialIndex={selected ? reports.findIndex((r) => r.name === selected.name && r.runId === selected.runId) : 0}
+          onClose={() => setViewerOpen(false)}
+        />
+      )}
     </section>
+  );
+}
+
+// ============================================================
+// Full-screen report viewer overlay
+// ============================================================
+
+function ReportViewerOverlay({
+  runId,
+  reports,
+  initialIndex,
+  onClose,
+}: {
+  runId: string;
+  reports: Report[];
+  initialIndex: number;
+  onClose: () => void;
+}) {
+  const [index, setIndex] = useState(initialIndex);
+  const [content, setContent] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!reports[index]) return;
+    const report = reports[index];
+    setLoading(true);
+    setContent(null);
+    setError(null);
+
+    getRunReport(report.runId, report.name)
+      .then((text) => {
+        setContent(text);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(String(err));
+        setLoading(false);
+      });
+  }, [index, runId, reports]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        onClose();
+      } else if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+        e.preventDefault();
+        setIndex((i) => Math.min(i + 1, reports.length - 1));
+      } else if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        setIndex((i) => Math.max(i - 1, 0));
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose, reports.length]);
+
+  const current = reports[index];
+
+  return (
+    <div className="report-overlay" onClick={onClose}>
+      <div className="report-overlay-inner" onClick={(e) => e.stopPropagation()}>
+        {/* Sidebar */}
+        <div className="report-sidebar">
+          <div className="report-sidebar-header">
+            <h3>Reports</h3>
+            <span className="report-count">{reports.length}</span>
+          </div>
+          <div className="report-file-list">
+            {reports.map((report, i) => (
+              <button
+                key={report.name}
+                type="button"
+                className={`report-file-item ${i === index ? "report-file-active" : ""}`}
+                onClick={() => setIndex(i)}
+              >
+                <span className="report-file-icon">📄</span>
+                <span className="report-file-name">{report.name}</span>
+                <span className="report-file-size">{formatBytes(report.size)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="report-main">
+          <div className="report-toolbar">
+            <span className="report-toolbar-title">
+              {current?.name}
+            </span>
+            <div className="report-toolbar-nav">
+              <button
+                type="button"
+                className="report-nav-btn"
+                disabled={index === 0}
+                onClick={() => setIndex((i) => Math.max(i - 1, 0))}
+                title="Previous report"
+              >
+                ↑
+              </button>
+              <span className="report-nav-counter">{index + 1} / {reports.length}</span>
+              <button
+                type="button"
+                className="report-nav-btn"
+                disabled={index === reports.length - 1}
+                onClick={() => setIndex((i) => Math.min(i + 1, reports.length - 1))}
+                title="Next report"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                className="report-close-btn"
+                onClick={onClose}
+                title="Close (Esc)"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div className="report-content">
+            {loading && <div className="empty">Loading report...</div>}
+            {error && <div className="error">{error}</div>}
+            {content !== null && (
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  a: ({ node, ...props }) => (
+                    <a {...props} target="_blank" rel="noopener noreferrer" />
+                  ),
+                }}
+              >
+                {cleanMarkdownContent(content)}
+              </ReactMarkdown>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2861,6 +3025,13 @@ function ReportsPage({
   const [loading, setLoading] =
     useState(true);
 
+  const [viewerRunId, setViewerRunId] =
+    useState<string | null>(null);
+  const [viewerReports, setViewerReports] =
+    useState<Report[]>([]);
+  const [viewerIndex, setViewerIndex] =
+    useState(0);
+
   // Load all reports
   useEffect(() => {
     let disposed = false;
@@ -3010,6 +3181,18 @@ function ReportsPage({
                         </span>
                       </>
                     )}
+                    <button
+                      type="button"
+                      className="report-viewer-open-btn"
+                      onClick={() => {
+                        setViewerRunId(runID);
+                        setViewerReports(list);
+                        setViewerIndex(0);
+                      }}
+                      title="Open full-screen viewer"
+                    >
+                      📖 Open
+                    </button>
                   </div>
 
                   {list.map((report) => {
@@ -3093,6 +3276,15 @@ function ReportsPage({
           </div>
         </div>
       </details>
+
+      {viewerRunId && viewerReports.length > 0 && (
+        <ReportViewerOverlay
+          runId={viewerRunId}
+          reports={viewerReports}
+          initialIndex={viewerIndex}
+          onClose={() => setViewerRunId(null)}
+        />
+      )}
     </section>
   );
 }
