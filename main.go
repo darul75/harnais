@@ -132,9 +132,20 @@ func main() {
 					fmt.Printf("[PERSIST] failed to persist event: %v\n", err)
 				}
 
-				// Persist run snapshot on completion/failure
+				// Update run status and persist snapshot on completion/failure
 				switch event.Type {
-				case graph.EventRunCompleted, graph.EventRunFailed:
+				case graph.EventRunCompleted:
+					now := time.Now()
+					runManager.UpdateStatus(event.RunID, graph.StatusCompleted, &now)
+					if err := runManager.PersistRunSnapshot(event.RunID); err != nil {
+						fmt.Printf("[PERSIST] failed to persist run %s: %v\n", event.RunID, err)
+					} else {
+						fmt.Printf("[PERSIST] run %s snapshot persisted\n", event.RunID)
+					}
+
+				case graph.EventRunFailed:
+					now := time.Now()
+					runManager.UpdateStatus(event.RunID, graph.StatusFailed, &now)
 					if err := runManager.PersistRunSnapshot(event.RunID); err != nil {
 						fmt.Printf("[PERSIST] failed to persist run %s: %v\n", event.RunID, err)
 					} else {
