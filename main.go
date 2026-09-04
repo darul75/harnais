@@ -40,6 +40,23 @@ func main() {
 	runManager :=
 		server.NewRunManager(runStore)
 
+	// Load persisted events into EventBus for SSE replay
+	runs, err := runStore.ListRuns()
+	if err != nil {
+		log.Printf("list runs: %v", err)
+	}
+	for _, r := range runs {
+		events, err := runStore.GetEvents(r.RunID)
+		if err != nil {
+			log.Printf("load events for %s: %v", r.RunID, err)
+			continue
+		}
+		eventBus.LoadHistory(r.RunID, events)
+	}
+	if len(runs) > 0 {
+		fmt.Printf("[PERSIST] loaded events for %d runs\n", len(runs))
+	}
+
 	// ============================================================
 	// Settings
 	// ============================================================

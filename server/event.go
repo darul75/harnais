@@ -146,3 +146,16 @@ func (b *EventBus) History(
 
 	return result
 }
+
+func (b *EventBus) LoadHistory(
+	runID string,
+	events []graph.Event,
+) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.history[runID] = append(
+		b.history[runID],
+		events...,
+	)
+}

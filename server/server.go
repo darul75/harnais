@@ -1859,6 +1859,7 @@ func (s *Server) events(
 			if _, err := s.Runs.Store().GetRun(runID); err == nil {
 				events, _ := s.Runs.Store().GetEvents(runID)
 				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
 				for _, e := range events {
 					data, _ := json.Marshal(e)
 					fmt.Fprintf(w, "data: %s\n\n", data)
