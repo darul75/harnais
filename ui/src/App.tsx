@@ -4532,7 +4532,15 @@ function AnalyticsPage() {
     return <div className="p-6 text-red-400">Failed to load analytics</div>;
   }
 
-  const { overview, llmByRun, toolStats, toolFailures, llmFailures, edgeStats, runDurations } = analytics;
+  const { overview, llmByRun, toolStats, toolFailures, llmFailures, edgeStats, runDurations } = {
+    llmByRun: [],
+    toolStats: [],
+    toolFailures: [],
+    llmFailures: [],
+    edgeStats: [],
+    runDurations: [],
+    ...analytics,
+  };
 
   function formatDuration(sec: number): string {
     if (sec < 60) return `${sec.toFixed(1)}s`;

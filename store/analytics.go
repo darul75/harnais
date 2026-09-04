@@ -177,6 +177,9 @@ func (s *RunStore) GetLLMCallsByRun() ([]LLMCallByRun, error) {
 		}
 		results = append(results, r)
 	}
+	if results == nil {
+		results = []LLMCallByRun{}
+	}
 	return results, rows.Err()
 }
 
@@ -205,6 +208,9 @@ func (s *RunStore) GetToolCallStats() ([]ToolCallStats, error) {
 		}
 		results = append(results, s)
 	}
+	if results == nil {
+		results = []ToolCallStats{}
+	}
 	return results, rows.Err()
 }
 
@@ -228,6 +234,9 @@ func (s *RunStore) GetToolFailures() ([]ToolFailure, error) {
 		}
 		results = append(results, f)
 	}
+	if results == nil {
+		results = []ToolFailure{}
+	}
 	return results, rows.Err()
 }
 
@@ -250,6 +259,9 @@ func (s *RunStore) GetLLMFailures() ([]LLMFailure, error) {
 			return nil, err
 		}
 		results = append(results, f)
+	}
+	if results == nil {
+		results = []LLMFailure{}
 	}
 	return results, rows.Err()
 }
@@ -276,6 +288,9 @@ func (s *RunStore) GetEdgeActivationStats() ([]EdgeActivationStats, error) {
 		}
 		results = append(results, e)
 	}
+	if results == nil {
+		results = []EdgeActivationStats{}
+	}
 	return results, rows.Err()
 }
 
@@ -301,6 +316,9 @@ func (s *RunStore) GetRunDurations() ([]RunDuration, error) {
 			return nil, err
 		}
 		results = append(results, r)
+	}
+	if results == nil {
+		results = []RunDuration{}
 	}
 	return results, rows.Err()
 }
