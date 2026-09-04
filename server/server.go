@@ -2084,7 +2084,7 @@ func withCORS(
 
 			w.Header().Set(
 				"Access-Control-Allow-Methods",
-				"GET, POST, PUT, OPTIONS",
+				"GET, POST, PUT, DELETE, OPTIONS",
 			)
 
 			if r.Method ==
