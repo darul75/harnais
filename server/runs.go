@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -196,4 +197,25 @@ func (m *RunManager) ListFromStore() ([]store.RunRecord, error) {
 		return nil, nil
 	}
 	return m.store.ListRuns()
+}
+
+func (m *RunManager) GetReconstructed(runID string) (*graph.Run, error) {
+	if m.store == nil {
+		return nil, fmt.Errorf("no store")
+	}
+	return m.store.ReconstructRun(runID)
+}
+
+func (m *RunManager) GetNodeExecutions(runID string) ([]*graph.NodeExecution, error) {
+	if m.store == nil {
+		return nil, fmt.Errorf("no store")
+	}
+	return m.store.GetNodeExecutions(runID)
+}
+
+func (m *RunManager) GetAgentExecutions(runID string) ([]*graph.AgentExecution, error) {
+	if m.store == nil {
+		return nil, fmt.Errorf("no store")
+	}
+	return m.store.GetAgentExecutions(runID)
 }

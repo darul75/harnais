@@ -1646,21 +1646,34 @@ func (s *Server) getState(
 	run, exists :=
 		s.Runs.Get(runID)
 
-	if !exists {
+	if exists {
+		writeJSON(
+			w,
+			run.StateSnapshot(),
+		)
+		return
+	}
 
+	detail, err := s.Runs.Store().GetRunDetail(runID)
+	if err != nil {
 		http.Error(
 			w,
 			"run not found",
 			http.StatusNotFound,
 		)
-
 		return
 	}
 
-	writeJSON(
-		w,
-		run.StateSnapshot(),
-	)
+	state := make(graph.State)
+	for _, e := range detail.NodeExecutions {
+		if e.Output != nil {
+			for k, v := range e.Output {
+				state[k] = v
+			}
+		}
+	}
+
+	writeJSON(w, state)
 }
 
 // ------------------------------------------------------------
@@ -1677,24 +1690,28 @@ func (s *Server) getExecutions(
 	run, exists :=
 		s.Runs.Get(runID)
 
-	if !exists {
+	if exists {
+		snapshot :=
+			run.Snapshot()
 
+		writeJSON(
+			w,
+			snapshot.Executions,
+		)
+		return
+	}
+
+	execs, err := s.Runs.Store().GetNodeExecutions(runID)
+	if err != nil {
 		http.Error(
 			w,
 			"run not found",
 			http.StatusNotFound,
 		)
-
 		return
 	}
 
-	snapshot :=
-		run.Snapshot()
-
-	writeJSON(
-		w,
-		snapshot.Executions,
-	)
+	writeJSON(w, execs)
 }
 
 // ------------------------------------------------------------
@@ -1711,24 +1728,28 @@ func (s *Server) getAgentExecutions(
 	run, exists :=
 		s.Runs.Get(runID)
 
-	if !exists {
+	if exists {
+		snapshot :=
+			run.Snapshot()
 
+		writeJSON(
+			w,
+			snapshot.AgentExecutions,
+		)
+		return
+	}
+
+	agents, err := s.Runs.Store().GetAgentExecutions(runID)
+	if err != nil {
 		http.Error(
 			w,
 			"run not found",
 			http.StatusNotFound,
 		)
-
 		return
 	}
 
-	snapshot :=
-		run.Snapshot()
-
-	writeJSON(
-		w,
-		snapshot.AgentExecutions,
-	)
+	writeJSON(w, agents)
 }
 
 // ------------------------------------------------------------

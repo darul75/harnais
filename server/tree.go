@@ -83,19 +83,34 @@ func (s *Server) getExecutionTree(
 	run, exists :=
 		s.Runs.Get(runID)
 
-	if !exists {
+	var snapshot graph.RunSnapshot
 
-		http.Error(
-			w,
-			"run not found",
-			http.StatusNotFound,
-		)
-
-		return
+	if exists {
+		snapshot = run.Snapshot()
+	} else {
+		detail, err := s.Runs.Store().GetRunDetail(runID)
+		if err != nil {
+			http.Error(
+				w,
+				"run not found",
+				http.StatusNotFound,
+			)
+			return
+		}
+		snapshot = graph.RunSnapshot{
+			ID:              detail.RunID,
+			Status:          detail.Status,
+			StartedAt:       detail.StartedAt,
+			CompletedAt:     detail.CompletedAt,
+			Executions:      detail.NodeExecutions,
+			EdgeActivations: detail.EdgeActivations,
+			AgentExecutions: detail.AgentExecutions,
+			LLMCalls:        detail.LLMCalls,
+			ToolCalls:       detail.ToolCalls,
+			ActivatedNodes:  make(map[string]bool),
+			State:           make(graph.State),
+		}
 	}
-
-	snapshot :=
-		run.Snapshot()
 
 	// ------------------------------------------------------------
 	// Index nested execution data.
