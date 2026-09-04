@@ -2860,6 +2860,7 @@ function ReportsPage({
                           <div className="reports-item-content">
                             <div className="markdown">
                               <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
                                 components={{
                                   a: (props) => (
                                     <a
