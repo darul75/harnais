@@ -1863,6 +1863,9 @@ func (s *Server) events(
 					data, _ := json.Marshal(e)
 					fmt.Fprintf(w, "data: %s\n\n", data)
 				}
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
 				return
 			}
 		}
