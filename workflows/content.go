@@ -3,7 +3,9 @@ package workflows
 import (
 	"fmt"
 
+	"harnais/config"
 	"harnais/graph"
+	"harnais/tools"
 )
 
 const ContentWorkflowID = "content"
@@ -70,7 +72,9 @@ var contentEditors = []struct {
 // ContentWorkflow turns a request into an outline, a full draft, and
 // three parallel editorial passes, then produces a final document.
 func ContentWorkflow(
-	s *Shared,
+	base *tools.Workspace,
+	store *config.Store,
+	hub *graph.QuestionHub,
 ) *Workflow {
 
 	return &Workflow{
@@ -93,7 +97,12 @@ func ContentWorkflow(
 			"prose",
 		},
 
-		Build: func() *graph.Graph {
+		Build: func(ws *tools.Workspace) *graph.Graph {
+
+			s :=
+				NewShared(base, store, hub)
+
+			s.SetRunWorkspace(ws)
 
 			g :=
 				graph.NewGraph()

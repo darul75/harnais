@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	"harnais/config"
 	"harnais/graph"
+	"harnais/tools"
 )
 
 const ResearchWorkflowID = "research"
@@ -103,7 +105,9 @@ func splitResearchTopics(
 // ResearchWorkflow plans a research question into three parallel
 // web-research streams and synthesizes a briefing report.
 func ResearchWorkflow(
-	s *Shared,
+	base *tools.Workspace,
+	store *config.Store,
+	hub *graph.QuestionHub,
 ) *Workflow {
 
 	return &Workflow{
@@ -124,7 +128,12 @@ func ResearchWorkflow(
 			"find out",
 		},
 
-		Build: func() *graph.Graph {
+		Build: func(ws *tools.Workspace) *graph.Graph {
+
+			s :=
+				NewShared(base, store, hub)
+
+			s.SetRunWorkspace(ws)
 
 			g :=
 				graph.NewGraph()

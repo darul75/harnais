@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"strings"
 
+	"harnais/config"
 	"harnais/graph"
+	"harnais/tools"
 	"harnais/tools/imapmail"
 )
 
@@ -41,7 +43,9 @@ found for the period.`
 // summarizes each one with an LLM, and writes a Markdown digest with a
 // direct link to every message.
 func GmailWorkflow(
-	s *Shared,
+	base *tools.Workspace,
+	store *config.Store,
+	hub *graph.QuestionHub,
 ) *Workflow {
 
 	return &Workflow{
@@ -61,7 +65,12 @@ func GmailWorkflow(
 			"inbox zero",
 		},
 
-		Build: func() *graph.Graph {
+		Build: func(ws *tools.Workspace) *graph.Graph {
+
+			s :=
+				NewShared(base, store, hub)
+
+			s.SetRunWorkspace(ws)
 
 			g :=
 				graph.NewGraph()

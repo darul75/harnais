@@ -6,6 +6,8 @@ import type {
   ToolCall,
 } from "./types";
 
+import ReactMarkdown from "react-markdown";
+
 interface Props {
   execution:
     | NodeExecution
@@ -309,140 +311,170 @@ export function ExecutionDetails({
 
               </div>
 
-              <div className="nested-calls">
+              <div className="agent-transcript">
 
-                {agentLLMs.map(
-                  call => (
-                    <div
-                      key={call.id}
-                      className="nested-call llm-call"
-                    >
+                {(() => {
+                  const llmById =
+                    new Map(
+                      agentLLMs.map(
+                        call => [
+                          call.id,
+                          call,
+                        ],
+                      ),
+                    );
 
-                      <div className="nested-call-header">
+                  const toolById =
+                    new Map(
+                      agentTools.map(
+                        call => [
+                          call.id,
+                          call,
+                        ],
+                      ),
+                    );
 
-                        <span>
-                          LLM #{call.sequence}
-                        </span>
+                  const userMsg =
+                    agentLLMs[0]?.messages?.find(
+                      message =>
+                        message.role ===
+                        "user",
+                    );
 
-                        <span
-                          className={
-                            `status status-${call.status}`
+                  const items =
+                    (agent.activities ??
+                      []).map(
+                      activity => {
+                        if (
+                          activity.llmCallId &&
+                          llmById.has(
+                            activity.llmCallId,
+                          )
+                        ) {
+                          return {
+                            kind: "llm",
+                            call:
+                              llmById.get(
+                                activity.llmCallId,
+                              )!,
+                          };
+                        }
+
+                        if (
+                          activity.toolCallId &&
+                          toolById.has(
+                            activity.toolCallId,
+                          )
+                        ) {
+                          return {
+                            kind: "tool",
+                            call:
+                              toolById.get(
+                                activity.toolCallId,
+                              )!,
+                          };
+                        }
+
+                        return null;
+                      },
+                    ).filter(
+                      Boolean,
+                    );
+
+                  return (
+                    <>
+                      {userMsg && (
+                        <div className="chat-message chat-user">
+                          <div className="chat-message-label">
+                            You
+                          </div>
+
+                          <div className="chat-bubble">
+                            <ReactMarkdown>
+                              {userMsg.content}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
+
+                      {items.map(
+                        item => {
+                          if (
+                            item.kind ===
+                            "llm"
+                          ) {
+                            return (
+                              <div
+                                key={item.call.id}
+                                className="chat-message chat-assistant"
+                              >
+                                <div className="chat-message-label">
+                                  Assistant
+                                </div>
+
+                                {item.call.reasoning && (
+                                  <details className="chat-thinking" open>
+                                    <summary>
+                                      Thinking
+                                    </summary>
+
+                                    <pre>
+                                      {item.call.reasoning}
+                                    </pre>
+                                  </details>
+                                )}
+
+                                <div className="chat-bubble">
+                                  <ReactMarkdown>
+                                    {item.call.response ??
+                                      ""}
+                                  </ReactMarkdown>
+                                </div>
+                              </div>
+                            );
                           }
-                        >
-                          {call.status}
-                        </span>
 
-                      </div>
+                          return (
+                            <div
+                              key={item.call.id}
+                              className="chat-tool"
+                            >
+                              <div className="chat-tool-header">
+                                <span>
+                                  {item.call.toolId}
+                                </span>
 
-                      <div className="nested-call-meta">
+                                <span
+                                  className={
+                                    `status status-${item.call.status}`
+                                  }
+                                >
+                                  {item.call.status}
+                                </span>
+                              </div>
 
-                        <span>
-                          {callDuration(
-                            call.startedAt,
-                            call.completedAt,
-                          )}
-                        </span>
+                              <details open>
+                                <summary>
+                                  Input / output
+                                </summary>
 
-                        {call.requestedTool && (
-                          <span>
-                            tool →{" "}
-                            {call.requestedTool}
-                          </span>
-                        )}
+                                <pre>
+                                  {pretty({
+                                    input:
+                                      item.call.input,
 
-                      </div>
-
-                      {call.reasoning && (
-  <details>
-    <summary>
-      Reasoning
-    </summary>
-
-    <pre>
-      {call.reasoning}
-    </pre>
-  </details>
-)}
-
-<details>
-
-                        <summary>
-                          Messages / response
-                        </summary>
-
-                        <pre>
-                          {pretty({
-                            messages:
-                              call.messages,
-
-                            response:
-                              call.response,
-                          })}
-                        </pre>
-
-                      </details>
-
-                    </div>
-                  ),
-                )}
-
-                {agentTools.map(
-                  call => (
-                    <div
-                      key={call.id}
-                      className="nested-call tool-call"
-                    >
-
-                      <div className="nested-call-header">
-
-                        <span>
-                          Tool #{call.sequence}
-                          {" · "}
-                          {call.toolId}
-                        </span>
-
-                        <span
-                          className={
-                            `status status-${call.status}`
-                          }
-                        >
-                          {call.status}
-                        </span>
-
-                      </div>
-
-                      <div className="nested-call-meta">
-
-                        <span>
-                          {callDuration(
-                            call.startedAt,
-                            call.completedAt,
-                          )}
-                        </span>
-
-                      </div>
-
-                      <details>
-
-                        <summary>
-                          Input / output
-                        </summary>
-
-                        <pre>
-                          {pretty({
-                            input:
-                              call.input,
-
-                            output:
-                              call.output,
-                          })}
-                        </pre>
-
-                      </details>
-
-                    </div>
-                  ),
-                )}
+                                    output:
+                                      item.call.output,
+                                  })}
+                                </pre>
+                              </details>
+                            </div>
+                          );
+                        },
+                      )}
+                    </>
+                  );
+                })()}
 
               </div>
 

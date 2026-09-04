@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"harnais/config"
 	"harnais/graph"
 	"harnais/tools"
 )
@@ -47,7 +48,9 @@ write a single sentence explaining that no readable text was found.`
 // sidebar, never by keyword or LLM classification, because it needs
 // an uploaded file.
 func PDFWorkflow(
-	s *Shared,
+	base *tools.Workspace,
+	store *config.Store,
+	hub *graph.QuestionHub,
 ) *Workflow {
 
 	return &Workflow{
@@ -59,7 +62,12 @@ func PDFWorkflow(
 
 		ManualOnly: true,
 
-		Build: func() *graph.Graph {
+		Build: func(ws *tools.Workspace) *graph.Graph {
+
+			s :=
+				NewShared(base, store, hub)
+
+			s.SetRunWorkspace(ws)
 
 			g :=
 				graph.NewGraph()

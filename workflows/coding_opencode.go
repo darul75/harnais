@@ -1,6 +1,10 @@
 package workflows
 
-import "harnais/graph"
+import (
+	"harnais/config"
+	"harnais/graph"
+	"harnais/tools"
+)
 
 const OpenCodeCodingWorkflowID = "coding-opencode"
 
@@ -66,7 +70,9 @@ const maxPlanAttempts = 3
 // loop that sends the result back to the coder when tests fail or
 // the reviewer rejects, capped at two review iterations.
 func OpenCodeCodingWorkflow(
-	s *Shared,
+	base *tools.Workspace,
+	store *config.Store,
+	hub *graph.QuestionHub,
 ) *Workflow {
 
 	return &Workflow{
@@ -89,7 +95,14 @@ func OpenCodeCodingWorkflow(
 			"opencode",
 		},
 
-		Build: func() *graph.Graph {
+		Isolated: true,
+
+		Build: func(ws *tools.Workspace) *graph.Graph {
+
+			s :=
+				NewShared(base, store, hub)
+
+			s.SetRunWorkspace(ws)
 
 			g :=
 				graph.NewGraph()

@@ -3097,6 +3097,20 @@ function LLMActivityRow({
                 </details>
               )}
 
+            {call.reasoning && (
+              <details open>
+                <summary>
+                  Thinking
+                </summary>
+
+                <pre className="reasoning-text">
+                  {
+                    call.reasoning
+                  }
+                </pre>
+              </details>
+            )}
+
             {call.response && (
               <details>
                 <summary>

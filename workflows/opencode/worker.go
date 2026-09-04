@@ -1119,9 +1119,11 @@ type activityRecorder struct {
 
 	tools map[string]toolRecord
 
-	// partsSeen tracks message part IDs already reflected into the
-	// activity records so history polling is incremental.
-	partsSeen map[string]bool
+	// partStatus tracks the last seen status of each message part ID
+	// so that state transitions (pending → running → completed) can
+	// be detected and re-processed. A part ID is re-read whenever its
+	// status differs from the previously recorded value.
+	partStatus map[string]string
 
 	// llmByMessage maps assistant message IDs to their live LLM state.
 	llmByMessage map[string]*llmState
@@ -1158,7 +1160,7 @@ func newActivityRecorder(
 		agentExecutionID: agentExecutionID,
 		prompt:           prompt,
 		tools:            map[string]toolRecord{},
-		partsSeen:        map[string]bool{},
+		partStatus:       map[string]string{},
 		llmByMessage:     map[string]*llmState{},
 		textByPart:       map[string]string{},
 		textOrder:        []string{},
@@ -1455,9 +1457,20 @@ func (r *activityRecorder) finishStep() {
 		return
 	}
 
+	response := r.stepText.String()
+
+	if strings.TrimSpace(response) != "" {
+		label := r.agentLabel()
+		resp := response
+		if len(resp) > 300 {
+			resp = resp[:300] + "…"
+		}
+		fmt.Printf("%s 📝 %s\n", label, resp)
+	}
+
 	r.run.CompleteLLMCall(
 		r.stepLLMCallID,
-		r.stepText.String(),
+		response,
 		r.stepTool,
 		nil,
 	)
@@ -1577,6 +1590,13 @@ func (r *activityRecorder) startTool(
 
 	r.stepTool = name
 
+	label := r.agentLabel()
+	inputBrief := ""
+	if len(input) > 0 {
+		inputBrief = fmt.Sprintf(" → %v", input)
+	}
+	fmt.Printf("%s 🔧 %s%s\n", label, name, inputBrief)
+
 	graph.EmitEvent(
 		r.ctx,
 		graph.Event{
@@ -1633,6 +1653,19 @@ func (r *activityRecorder) finishTool(
 	)
 
 	delete(r.tools, callID)
+
+	label := r.agentLabel()
+	if err != nil {
+		fmt.Printf("%s ❌ %s error: %s\n", label, record.name, err)
+	} else {
+		out := output
+		if len(out) > 400 {
+			out = out[:400] + "…"
+		}
+		if out != "" {
+			fmt.Printf("%s ✅ %s → %s\n", label, record.name, out)
+		}
+	}
 
 	graph.EmitEvent(
 		r.ctx,
@@ -1874,6 +1907,10 @@ func (r *activityRecorder) updateLLM(
 
 // syncMessages reflects the session message history into the activity
 // records incrementally (live text, reasoning, and tool calls).
+func (r *activityRecorder) agentLabel() string {
+	return fmt.Sprintf("[%s]", r.agentID)
+}
+
 func (r *activityRecorder) syncMessages(
 	messages []SessionMessage,
 ) {
@@ -1893,12 +1930,28 @@ func (r *activityRecorder) syncMessages(
 				continue
 			}
 
-			if part.ID == "" ||
-				r.partsSeen[part.ID] {
+			if part.ID == "" {
 				continue
 			}
 
-			r.partsSeen[part.ID] = true
+			// For tool parts, re-process when status changes (pending
+			// → running → completed). For text/reasoning, process once
+			// (append-only, no state transitions).
+			if part.Type == "tool" {
+				status := ""
+				if part.State != nil {
+					status, _ = part.State["status"].(string)
+				}
+				if prev, seen := r.partStatus[part.ID]; seen && prev == status {
+					continue
+				}
+				r.partStatus[part.ID] = status
+			} else {
+				if _, seen := r.partStatus[part.ID]; seen {
+					continue
+				}
+				r.partStatus[part.ID] = "done"
+			}
 
 			switch part.Type {
 
@@ -1913,6 +1966,15 @@ func (r *activityRecorder) syncMessages(
 
 				st.response.WriteString(part.Text)
 
+				if strings.TrimSpace(part.Text) != "" {
+					label := r.agentLabel()
+					text := part.Text
+					if len(text) > 300 {
+						text = text[:300] + "…"
+					}
+					fmt.Printf("%s 💬 %s\n", label, text)
+				}
+
 				r.updateLLM(st)
 
 			case "reasoning":
@@ -1921,6 +1983,15 @@ func (r *activityRecorder) syncMessages(
 					r.ensureLLM(message.Info.ID)
 
 				st.reasoning.WriteString(part.Text)
+
+				if strings.TrimSpace(part.Text) != "" {
+					label := r.agentLabel()
+					text := part.Text
+					if len(text) > 300 {
+						text = text[:300] + "…"
+					}
+					fmt.Printf("%s 🤔 %s\n", label, text)
+				}
 
 				r.updateLLM(st)
 

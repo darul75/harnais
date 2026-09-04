@@ -33,6 +33,153 @@ func NewWorkspace(
 	}
 }
 
+// seedExcluded names workspace entries never copied into a run dir.
+var seedExcluded = map[string]bool{
+	"reports":   true,
+	"uploads":   true,
+	"coding":    true,
+	".git":      true,
+	".DS_Store": true,
+}
+
+// SeedRunDir creates an isolated per-run working directory by copying
+// the base workspace's source files (excluding meta folders) and
+// initializing a fresh git repo with the baseline committed, so agents
+// can diff this run's changes without touching the harness's own repo.
+func SeedRunDir(
+	baseRoot string,
+	runDir string,
+) error {
+
+	if err :=
+		os.MkdirAll(
+			runDir,
+			0o755,
+		); err != nil {
+
+		return err
+	}
+
+	entries, err :=
+		os.ReadDir(baseRoot)
+
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+
+		if seedExcluded[entry.Name()] {
+			continue
+		}
+
+		source :=
+			filepath.Join(
+				baseRoot,
+				entry.Name(),
+			)
+
+		dest :=
+			filepath.Join(
+				runDir,
+				entry.Name(),
+			)
+
+		if err :=
+			copyPath(source, dest); err != nil {
+			return err
+		}
+	}
+
+	return initRunRepo(runDir)
+}
+
+// copyPath recursively copies a file or directory.
+func copyPath(
+	source string,
+	dest string,
+) error {
+
+	info, err :=
+		os.Stat(source)
+
+	if err != nil {
+		return err
+	}
+
+	if !info.IsDir() {
+
+		data, err :=
+			os.ReadFile(source)
+
+		if err != nil {
+			return err
+		}
+
+		return os.WriteFile(
+			dest,
+			data,
+			info.Mode(),
+		)
+	}
+
+	if err :=
+		os.MkdirAll(
+			dest,
+			info.Mode(),
+		); err != nil {
+
+		return err
+	}
+
+	entries, err :=
+		os.ReadDir(source)
+
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+
+		if err :=
+			copyPath(
+				filepath.Join(source, entry.Name()),
+				filepath.Join(dest, entry.Name()),
+			); err != nil {
+
+			return err
+		}
+	}
+
+	return nil
+}
+
+// initRunRepo initializes a fresh git repo in the run dir and commits
+// the seeded baseline so git diff reflects the run's own changes. A
+// nested repo does not affect the harness repo above.
+func initRunRepo(
+	runDir string,
+) error {
+
+	runGit := func(args ...string) {
+		cmd := exec.Command(
+			"git",
+			append(
+				[]string{"-C", runDir},
+				args...,
+			)...,
+		)
+
+		_ = cmd.Run()
+	}
+
+	runGit("init", "-q")
+	runGit("add", "-A")
+	runGit("commit", "-q", "-m", "baseline")
+
+	return nil
+}
+
 // ------------------------------------------------------------
 // Path safety
 // ------------------------------------------------------------

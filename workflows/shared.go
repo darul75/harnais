@@ -20,7 +20,12 @@ import (
 // Shared holds reusable node/worker builders so each workflow
 // can compose distinct graphs from common components.
 type Shared struct {
+	// workspace is the directory agents operate in (the run workspace
+	// for isolated workflows, otherwise the base workspace).
 	workspace *tools.Workspace
+
+	// base is the base workspace used for reports/uploads resolution.
+	base *tools.Workspace
 
 	store *config.Store
 
@@ -37,10 +42,20 @@ func NewShared(
 
 	return &Shared{
 		workspace: workspace,
+		base:      workspace,
 		store:     store,
 
 		QuestionHub: questionHub,
 	}
+}
+
+// SetRunWorkspace points the agents at a per-run workspace while
+// keeping the base workspace for reports/uploads resolution.
+func (s *Shared) SetRunWorkspace(
+	workspace *tools.Workspace,
+) {
+
+	s.workspace = workspace
 }
 
 // LLMFactory returns a factory that builds an LLM from the
@@ -443,7 +458,7 @@ func (s *Shared) WriteReport(
 				)
 
 			resolved, err :=
-				s.workspace.Resolve(
+				s.base.Resolve(
 					relative,
 				)
 
@@ -935,6 +950,25 @@ func (s *Shared) askUser(
 		if !ok {
 			return nil, false
 		}
+
+		// Emit the answer so a replayed run-history removes the
+		// question card (mirrors the opencode worker's handleQuestion).
+		graph.EmitEvent(
+			ctx,
+			graph.Event{
+				Time: time.Now(),
+
+				Type: graph.EventAgentQuestionAnswer,
+
+				AgentID: "harnais",
+
+				Data: map[string]any{
+					"requestId": requestID,
+
+					"answers": got,
+				},
+			},
+		)
 
 		return got, true
 	}

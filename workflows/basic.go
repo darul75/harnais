@@ -2,7 +2,9 @@ package workflows
 
 import (
 	"harnais/agent"
+	"harnais/config"
 	"harnais/graph"
+	"harnais/tools"
 )
 
 const BasicWorkflowID = "basic"
@@ -21,7 +23,9 @@ or auditing a codebase), say so and stop.`
 // clearly a specialized task. It answers directly with a single LLM
 // step and no tools.
 func BasicWorkflow(
-	s *Shared,
+	base *tools.Workspace,
+	store *config.Store,
+	hub *graph.QuestionHub,
 ) *Workflow {
 
 	return &Workflow{
@@ -31,7 +35,12 @@ func BasicWorkflow(
 
 		Description: "Answer a general question or request directly with a single LLM step.",
 
-		Build: func() *graph.Graph {
+		Build: func(ws *tools.Workspace) *graph.Graph {
+
+			s :=
+				NewShared(base, store, hub)
+
+			s.SetRunWorkspace(ws)
 
 			g :=
 				graph.NewGraph()
@@ -46,9 +55,9 @@ func BasicWorkflow(
 
 						Prompt: basicPrompt,
 
-LLMFactory: s.LLMFactory(
-						"openai",
-					),
+						LLMFactory: s.LLMFactory(
+							"openai",
+						),
 					},
 				},
 			)

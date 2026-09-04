@@ -97,10 +97,23 @@ func (e *Executor) Start(
 	g *Graph,
 	initial State,
 ) *Run {
-	runID := fmt.Sprintf(
-		"run-%d",
-		time.Now().UnixNano(),
+	return e.StartWithID(
+		ctx,
+		g,
+		initial,
+		generateRunID(),
 	)
+}
+
+// StartWithID starts a run with an explicit run ID, so callers can
+// prepare run-scoped state (e.g. an isolated workspace directory)
+// before the graph is built.
+func (e *Executor) StartWithID(
+	ctx context.Context,
+	g *Graph,
+	initial State,
+	runID string,
+) *Run {
 
 	run := NewRun(
 		runID,
@@ -132,10 +145,21 @@ func (e *Executor) Run(
 	g *Graph,
 	initial State,
 ) (State, *Run, error) {
-	runID := fmt.Sprintf(
-		"run-%d",
-		time.Now().UnixNano(),
+	return e.RunWithID(
+		ctx,
+		g,
+		initial,
+		generateRunID(),
 	)
+}
+
+// RunWithID runs a graph synchronously with an explicit run ID.
+func (e *Executor) RunWithID(
+	ctx context.Context,
+	g *Graph,
+	initial State,
+	runID string,
+) (State, *Run, error) {
 
 	run := NewRun(
 		runID,
@@ -151,6 +175,13 @@ func (e *Executor) Run(
 		ctx,
 		run,
 		initial,
+	)
+}
+
+func generateRunID() string {
+	return fmt.Sprintf(
+		"run-%d",
+		time.Now().UnixNano(),
 	)
 }
 
@@ -914,9 +945,34 @@ func (e *Executor) isFinished(
 
 	for _, activation := range run.EdgeActivations {
 
-		if activation.ToExecutionID == nil {
-			return false
+		if activation.ToExecutionID != nil {
+			continue
 		}
+
+		// Stale activation: the target node already completed a run,
+		// so it won't run again without a fresh edge activation (e.g.
+		// an extra JoinAll activation left when a source node fired
+		// more times than the JoinAll target consumed).
+		completed := false
+
+		for _, execution := range run.Executions {
+
+			if execution.NodeID ==
+				activation.ToNodeID &&
+				execution.Status ==
+					StatusCompleted {
+
+				completed = true
+
+				break
+			}
+		}
+
+		if completed {
+			continue
+		}
+
+		return false
 	}
 
 	return true

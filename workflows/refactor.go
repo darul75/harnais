@@ -1,6 +1,10 @@
 package workflows
 
-import "harnais/graph"
+import (
+	"harnais/config"
+	"harnais/graph"
+	"harnais/tools"
+)
 
 const RefactorWorkflowID = "refactor"
 
@@ -28,7 +32,9 @@ Do not fabricate tool results or test results.`
 // reviewer rejections send the result back to the coder, capped at
 // two review iterations.
 func RefactorWorkflow(
-	s *Shared,
+	base *tools.Workspace,
+	store *config.Store,
+	hub *graph.QuestionHub,
 ) *Workflow {
 
 	return &Workflow{
@@ -50,7 +56,14 @@ func RefactorWorkflow(
 			"extract",
 		},
 
-		Build: func() *graph.Graph {
+		Isolated: true,
+
+		Build: func(ws *tools.Workspace) *graph.Graph {
+
+			s :=
+				NewShared(base, store, hub)
+
+			s.SetRunWorkspace(ws)
 
 			g :=
 				graph.NewGraph()

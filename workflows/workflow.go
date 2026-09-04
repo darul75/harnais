@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"harnais/graph"
+	"harnais/tools"
 )
 
 // Workflow is a named, selectable graph definition.
@@ -24,8 +25,14 @@ type Workflow struct {
 	// selected in the sidebar.
 	ManualOnly bool
 
-	// Build returns a fresh graph for each run.
-	Build func() *graph.Graph
+	// Isolated workflows operate in a per-run workspace directory
+	// (workspace/coding/runs/<runID>/), so their agents only see the
+	// run's content.
+	Isolated bool
+
+	// Build returns a fresh graph for each run, given the workspace the
+	// run should operate in.
+	Build func(runWorkspace *tools.Workspace) *graph.Graph
 }
 
 // Registry holds every available workflow.

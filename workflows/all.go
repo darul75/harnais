@@ -15,28 +15,25 @@ func Register(
 	questionHub *graph.QuestionHub,
 ) (*Registry, error) {
 
-	s :=
-		NewShared(workspace, store, questionHub)
-
 	return NewRegistry(
 		BasicWorkflowID,
 
-		BasicWorkflow(s),
+		BasicWorkflow(workspace, store, questionHub),
 
-		OpenCodeCodingWorkflow(s),
+		OpenCodeCodingWorkflow(workspace, store, questionHub),
 
-		ResearchWorkflow(s),
+		ResearchWorkflow(workspace, store, questionHub),
 
-		ContentWorkflow(s),
+		ContentWorkflow(workspace, store, questionHub),
 
-		PDFWorkflow(s),
+		PDFWorkflow(workspace, store, questionHub),
 
-		SecurityAuditWorkflow(s),
+		SecurityAuditWorkflow(workspace, store, questionHub),
 
-		RefactorWorkflow(s),
+		RefactorWorkflow(workspace, store, questionHub),
 
-		TTSWorkflow(s),
+		TTSWorkflow(workspace, store, questionHub),
 
-		GmailWorkflow(s),
+		GmailWorkflow(workspace, store, questionHub),
 	)
 }

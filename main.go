@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
+	"time"
 
 	"harnais/config"
 	"harnais/graph"
@@ -142,8 +144,49 @@ func main() {
 					workflow.Title,
 				)
 
+				runID := fmt.Sprintf(
+					"run-%d",
+					time.Now().UnixNano(),
+				)
+
+				runWorkspace :=
+					workspace
+
+				if workflow.Isolated {
+
+					// Each coding run works in an isolated directory
+					// seeded from the base workspace, so agents only
+					// see this run's content.
+					runDir :=
+						filepath.Join(
+							workspace.Root,
+							"coding",
+							"runs",
+							runID,
+						)
+
+					if err :=
+						tools.SeedRunDir(
+							workspace.Root,
+							runDir,
+						); err != nil {
+
+						fmt.Println(
+							"[workflow] seed run workspace:",
+							err,
+						)
+					}
+
+					runWorkspace =
+						tools.NewWorkspace(
+							runDir,
+						)
+				}
+
 				g :=
-					workflow.Build()
+					workflow.Build(
+						runWorkspace,
+					)
 
 				initial :=
 					graph.State{
@@ -156,10 +199,11 @@ func main() {
 				}
 
 				run :=
-					executor.Start(
+					executor.StartWithID(
 						context.Background(),
 						g,
 						initial,
+						runID,
 					)
 
 				runManager.Add(
@@ -220,7 +264,9 @@ func main() {
 
 				graphInfo :=
 					workflows.Describe(
-						workflow.Build(),
+						workflow.Build(
+							workspace,
+						),
 					)
 
 				nodes := make(

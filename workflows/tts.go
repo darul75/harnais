@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"harnais/config"
 	"harnais/graph"
 	"harnais/llm"
+	"harnais/tools"
 )
 
 const TTSWorkflowID = "tts"
@@ -17,7 +19,9 @@ const TTSWorkflowID = "tts"
 // (MP3) using OpenAI's audio/speech API. The text is synthesized
 // as-is; no LLM transforms it first.
 func TTSWorkflow(
-	s *Shared,
+	base *tools.Workspace,
+	store *config.Store,
+	hub *graph.QuestionHub,
 ) *Workflow {
 
 	return &Workflow{
@@ -39,7 +43,12 @@ func TTSWorkflow(
 			"speak",
 		},
 
-		Build: func() *graph.Graph {
+		Build: func(ws *tools.Workspace) *graph.Graph {
+
+			s :=
+				NewShared(base, store, hub)
+
+			s.SetRunWorkspace(ws)
 
 			g :=
 				graph.NewGraph()

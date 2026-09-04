@@ -1,6 +1,10 @@
 package workflows
 
-import "harnais/graph"
+import (
+	"harnais/config"
+	"harnais/graph"
+	"harnais/tools"
+)
 
 const SecurityAuditWorkflowID = "security_audit"
 
@@ -26,7 +30,9 @@ Do not fabricate findings or tool results.`
 // SecurityAuditWorkflow performs a read-only security review
 // of the requested area, then reviews the findings.
 func SecurityAuditWorkflow(
-	s *Shared,
+	base *tools.Workspace,
+	store *config.Store,
+	hub *graph.QuestionHub,
 ) *Workflow {
 
 	return &Workflow{
@@ -48,7 +54,14 @@ func SecurityAuditWorkflow(
 			"review security",
 		},
 
-		Build: func() *graph.Graph {
+		Isolated: true,
+
+		Build: func(ws *tools.Workspace) *graph.Graph {
+
+			s :=
+				NewShared(base, store, hub)
+
+			s.SetRunWorkspace(ws)
 
 			g :=
 				graph.NewGraph()
