@@ -154,12 +154,12 @@ func (s *RunStore) GetLLMCallsByRun() ([]LLMCallByRun, error) {
 	rows, err := s.db.Query(`
 		SELECT r.id, r.task, COUNT(*) as cnt,
 			SUM(CASE WHEN l.status IN ('error', 'failed') THEN 1 ELSE 0 END) as failed,
-			AVG(CASE WHEN l.completed_at IS NOT NULL
+			COALESCE(AVG(CASE WHEN l.completed_at IS NOT NULL
 				THEN (strftime('%s', l.completed_at) - strftime('%s', l.started_at))
-				ELSE 0 END) as avg_sec,
-			SUM(CASE WHEN l.completed_at IS NOT NULL
+				ELSE NULL END), 0) as avg_sec,
+			COALESCE(SUM(CASE WHEN l.completed_at IS NOT NULL
 				THEN (strftime('%s', l.completed_at) - strftime('%s', l.started_at))
-				ELSE 0 END) as total_sec
+				ELSE 0 END), 0) as total_sec
 		FROM llm_calls l JOIN runs r ON l.run_id = r.id
 		GROUP BY l.run_id
 		ORDER BY total_sec DESC
@@ -185,9 +185,9 @@ func (s *RunStore) GetToolCallStats() ([]ToolCallStats, error) {
 		SELECT tool_id, COUNT(*) as cnt,
 			SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
 			SUM(CASE WHEN status IN ('error', 'failed') THEN 1 ELSE 0 END) as failed,
-			AVG(CASE WHEN completed_at IS NOT NULL
+			COALESCE(AVG(CASE WHEN completed_at IS NOT NULL
 				THEN (strftime('%s', completed_at) - strftime('%s', started_at))
-				ELSE 0 END) as avg_sec
+				ELSE NULL END), 0) as avg_sec
 		FROM tool_calls
 		GROUP BY tool_id
 		ORDER BY cnt DESC
@@ -282,9 +282,9 @@ func (s *RunStore) GetEdgeActivationStats() ([]EdgeActivationStats, error) {
 func (s *RunStore) GetRunDurations() ([]RunDuration, error) {
 	rows, err := s.db.Query(`
 		SELECT id, task, status,
-			CASE WHEN completed_at IS NOT NULL
+			COALESCE(CASE WHEN completed_at IS NOT NULL
 				THEN (strftime('%s', completed_at) - strftime('%s', started_at))
-				ELSE 0 END as duration_sec,
+				ELSE 0 END, 0) as duration_sec,
 			started_at
 		FROM runs
 		ORDER BY started_at DESC
