@@ -1996,6 +1996,28 @@ pre {
   font-style: italic;
 }
 
+.reasoning-block {
+  margin: 10px 0;
+
+  padding: 12px 14px;
+
+  border-radius: 8px;
+
+  border-left: 3px solid #7c3aed;
+
+  background: #1a1030;
+
+  color: #c4b5fd;
+
+  font-size: 12px;
+
+  line-height: 1.6;
+
+  white-space: pre-wrap;
+
+  font-style: italic;
+}
+
 /* --------------------------------------------------------- */
 /* Agent chat transcript (opencode-style conversation)        */
 /* --------------------------------------------------------- */

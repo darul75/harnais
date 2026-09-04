@@ -3009,8 +3009,16 @@ function LLMActivityRow({
   activity: AgentActivity;
   call?: LLMCall;
 }) {
+  const hasReasoning =
+    !!call?.reasoning &&
+    call.reasoning.trim() !==
+      "";
+
   return (
-    <details className="activity-details llm-call">
+    <details
+      className="activity-details llm-call"
+      open={hasReasoning}
+    >
       <summary className="activity-row">
         <span className="caret">
           {"\u25B8"}
@@ -3027,9 +3035,11 @@ function LLMActivityRow({
         </span>
 
         <span className="activity-agent">
-          {call?.requestedTool
-            ? "tool request"
-            : "response"}
+          {hasReasoning
+            ? "thinking"
+            : call?.requestedTool
+              ? "tool request"
+              : "response"}
         </span>
 
         <span>
@@ -3043,8 +3053,16 @@ function LLMActivityRow({
         <span className="activity-message">
           {call?.requestedTool
             ? `requested ${call.requestedTool}`
-            : call?.response ??
-              "LLM call"}
+            : call?.response?.slice(
+                0,
+                120,
+              ) ??
+              (hasReasoning
+                ? call.reasoning?.slice(
+                    0,
+                    120,
+                  )
+                : "LLM call")}
         </span>
       </summary>
 
@@ -3079,6 +3097,14 @@ function LLMActivityRow({
               )}
             </div>
 
+            {hasReasoning && (
+              <div className="reasoning-block">
+                {
+                  call.reasoning
+                }
+              </div>
+            )}
+
             {call.messages &&
               call.messages.length >
                 0 && (
@@ -3096,20 +3122,6 @@ function LLMActivityRow({
                   </pre>
                 </details>
               )}
-
-            {call.reasoning && (
-              <details open>
-                <summary>
-                  Thinking
-                </summary>
-
-                <pre className="reasoning-text">
-                  {
-                    call.reasoning
-                  }
-                </pre>
-              </details>
-            )}
 
             {call.response && (
               <details>
