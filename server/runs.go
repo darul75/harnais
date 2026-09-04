@@ -165,6 +165,11 @@ func (m *RunManager) PersistRunSnapshot(runID string) error {
 		if err := m.store.AddAgentExecution(runID, e); err != nil {
 			return err
 		}
+		for _, a := range e.Activities {
+			if err := m.store.AddAgentActivity(runID, a); err != nil {
+				return err
+			}
+		}
 	}
 
 	for _, c := range snapshot.LLMCalls {

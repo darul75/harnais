@@ -134,6 +134,42 @@ func (s *RunStore) GetAgentExecutions(runID string) ([]*graph.AgentExecution, er
 	return scanAgentExecutions(rows)
 }
 
+func (s *RunStore) AddAgentActivity(runID string, a *graph.AgentActivity) error {
+	llmCallID := ""
+	if a.LLMCallID != nil {
+		llmCallID = *a.LLMCallID
+	}
+	toolCallID := ""
+	if a.ToolCallID != nil {
+		toolCallID = *a.ToolCallID
+	}
+
+	_, err := s.db.Exec(
+		`INSERT INTO agent_activities (
+			id, agent_execution_id, run_id, sequence, kind,
+			llm_call_id, tool_call_id, started_at, completed_at, status
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.ID, a.AgentExecutionID, runID, a.Sequence, a.Kind,
+		llmCallID, toolCallID, a.StartedAt, optionalTime(a.CompletedAt), a.Status,
+	)
+	return err
+}
+
+func (s *RunStore) GetAgentActivities(runID string) ([]*graph.AgentActivity, error) {
+	rows, err := s.db.Query(
+		`SELECT id, agent_execution_id, sequence, kind,
+			llm_call_id, tool_call_id, started_at, completed_at, status
+		FROM agent_activities WHERE run_id = ? ORDER BY sequence ASC`,
+		runID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanAgentActivities(rows)
+}
+
 func (s *RunStore) AddLLMCall(runID string, c *graph.LLMCall) error {
 	_, err := s.db.Exec(
 		`INSERT INTO llm_calls (

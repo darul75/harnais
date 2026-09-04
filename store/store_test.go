@@ -344,6 +344,61 @@ func TestStorePersistsAcrossOpenClose(t *testing.T) {
 	}()
 }
 
+func TestAddAgentActivity(t *testing.T) {
+	store := newTestStore(t)
+
+	now := time.Now()
+	store.CreateRun("run-1", "wf-1", "test", now)
+
+	agent := &graph.AgentExecution{
+		ID:              "agent-1",
+		NodeExecutionID: "exec-1",
+		AgentID:         "agent-reviewer",
+		Status:          graph.StatusRunning,
+		StartedAt:       now,
+	}
+	store.AddAgentExecution("run-1", agent)
+
+	activity := &graph.AgentActivity{
+		ID:               "activity-1",
+		AgentExecutionID: "agent-1",
+		Sequence:         0,
+		Kind:             graph.ActivityLLM,
+		StartedAt:        now,
+		Status:           graph.StatusRunning,
+	}
+
+	if err := store.AddAgentActivity("run-1", activity); err != nil {
+		t.Fatalf("AddAgentActivity: %v", err)
+	}
+
+	activities, err := store.GetAgentActivities("run-1")
+	if err != nil {
+		t.Fatalf("GetAgentActivities: %v", err)
+	}
+
+	if len(activities) != 1 {
+		t.Fatalf("expected 1 activity, got %d", len(activities))
+	}
+
+	if activities[0].Kind != graph.ActivityLLM {
+		t.Errorf("expected llm activity, got %s", activities[0].Kind)
+	}
+
+	detail, err := store.GetRunDetail("run-1")
+	if err != nil {
+		t.Fatalf("GetRunDetail: %v", err)
+	}
+
+	if len(detail.AgentExecutions) != 1 {
+		t.Fatalf("expected 1 agent execution in detail, got %d", len(detail.AgentExecutions))
+	}
+
+	if len(detail.AgentExecutions[0].Activities) != 1 {
+		t.Fatalf("expected 1 activity on agent execution, got %d", len(detail.AgentExecutions[0].Activities))
+	}
+}
+
 func TestMain(m *testing.M) {
 	code := m.Run()
 	os.Exit(code)

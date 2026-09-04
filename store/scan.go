@@ -193,6 +193,84 @@ func scanAgentExecutions(rows *sql.Rows) ([]*graph.AgentExecution, error) {
 	return executions, rows.Err()
 }
 
+func scanAgentActivity(row *sql.Row) (*graph.AgentActivity, error) {
+	var a graph.AgentActivity
+	var llmCallID, toolCallID string
+	var completedAt sql.NullTime
+
+	err := row.Scan(
+		&a.ID,
+		&a.AgentExecutionID,
+		&a.Sequence,
+		&a.Kind,
+		&llmCallID,
+		&toolCallID,
+		&a.StartedAt,
+		&completedAt,
+		&a.Status,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if llmCallID != "" {
+		a.LLMCallID = &llmCallID
+	}
+	if toolCallID != "" {
+		a.ToolCallID = &toolCallID
+	}
+	if completedAt.Valid {
+		a.CompletedAt = &completedAt.Time
+	}
+
+	return &a, nil
+}
+
+func scanAgentActivities(rows *sql.Rows) ([]*graph.AgentActivity, error) {
+	var activities []*graph.AgentActivity
+	for rows.Next() {
+		a, err := scanAgentActivityRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		activities = append(activities, a)
+	}
+	return activities, rows.Err()
+}
+
+func scanAgentActivityRow(rows *sql.Rows) (*graph.AgentActivity, error) {
+	var a graph.AgentActivity
+	var llmCallID, toolCallID string
+	var completedAt sql.NullTime
+
+	err := rows.Scan(
+		&a.ID,
+		&a.AgentExecutionID,
+		&a.Sequence,
+		&a.Kind,
+		&llmCallID,
+		&toolCallID,
+		&a.StartedAt,
+		&completedAt,
+		&a.Status,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if llmCallID != "" {
+		a.LLMCallID = &llmCallID
+	}
+	if toolCallID != "" {
+		a.ToolCallID = &toolCallID
+	}
+	if completedAt.Valid {
+		a.CompletedAt = &completedAt.Time
+	}
+
+	return &a, nil
+}
+
 func scanLLMCall(row *sql.Row) (*graph.LLMCall, error) {
 	var c graph.LLMCall
 	var messages string
@@ -452,6 +530,22 @@ func (s *RunStore) GetRunDetail(runID string) (*RunDetail, error) {
 	edgeActs, err := s.GetEdgeActivations(runID)
 	if err != nil {
 		return nil, fmt.Errorf("get edge activations: %w", err)
+	}
+
+	activities, err := s.GetAgentActivities(runID)
+	if err != nil {
+		return nil, fmt.Errorf("get agent activities: %w", err)
+	}
+
+	activityByAgent := make(map[string][]*graph.AgentActivity)
+	for _, a := range activities {
+		activityByAgent[a.AgentExecutionID] = append(activityByAgent[a.AgentExecutionID], a)
+	}
+
+	for _, ae := range agentExecs {
+		if acts, ok := activityByAgent[ae.ID]; ok {
+			ae.Activities = acts
+		}
 	}
 
 	return &RunDetail{

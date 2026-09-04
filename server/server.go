@@ -886,18 +886,24 @@ func (s *Server) requireRun(
 ) bool {
 
 	if _, exists :=
-		s.Runs.Get(runID); !exists {
+		s.Runs.Get(runID); exists {
 
-		http.Error(
-			w,
-			"run not found",
-			http.StatusNotFound,
-		)
-
-		return false
+		return true
 	}
 
-	return true
+	if s.Runs.Store() != nil {
+		if _, err := s.Runs.Store().GetRun(runID); err == nil {
+			return true
+		}
+	}
+
+	http.Error(
+		w,
+		"run not found",
+		http.StatusNotFound,
+	)
+
+	return false
 }
 
 func (s *Server) resolveRunReport(
@@ -1849,6 +1855,13 @@ func (s *Server) events(
 		s.Runs.Get(runID)
 
 	if !exists {
+		if s.Runs.Store() != nil {
+			if record, err := s.Runs.Store().GetRun(runID); err == nil {
+				w.Header().Set("Content-Type", "text/event-stream")
+				fmt.Fprintf(w, "event: run.%s\ndata: {\"id\":\"%s\"}\n\n", record.Status, runID)
+				return
+			}
+		}
 
 		http.Error(
 			w,
