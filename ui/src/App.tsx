@@ -126,7 +126,7 @@ function App() {
   const [task, setTask] = useState("");
   const [starting, setStarting] = useState(false);
 
-  const { runId, workflowId, settings, reports, selectRun, selectWorkflow, openSettings, openReports, clear } =
+  const { runId, workflowId, settings, reports, workflowsPage, selectRun, selectWorkflow, openSettings, openReports, openWorkflows, clear } =
     useRoute();
 
   const [run, setRun] =
@@ -811,87 +811,43 @@ function App() {
           <div className="panel">
             <div className="panel-header">
               <h2>
-                Workflows
+                Actions
               </h2>
-
-              <span>
-                {workflows.length}
-              </span>
             </div>
 
             <div className="workflow-list">
               <button
                 type="button"
                 className={`workflow-row ${
-                  workflowId === null
-                    ? "workflow-selected"
-                    : ""
+                  reports ? "workflow-selected" : ""
                 }`}
-                onClick={() =>
-                  clear()
-                }
+                onClick={() => openReports()}
               >
                 <span className="workflow-title">
-                  Auto
+                  Reports
                 </span>
 
                 <span className="workflow-desc">
-                  Choose automatically from the request
+                  View all run reports
                 </span>
               </button>
 
-              {workflows.map(
-                (workflow) => (
-                  <button
-                    key={workflow.id}
-                    type="button"
-                    className={`workflow-row ${
-                      workflowId ===
-                      workflow.id
-                        ? "workflow-selected"
-                        : ""
-                    }`}
-                    onClick={() =>
-                      selectWorkflow(
-                        workflow.id,
-                      )
-                    }
-                  >
-                    <span className="workflow-title">
-                      {workflow.title}
-                    </span>
+              <button
+                type="button"
+                className={`workflow-row ${
+                  workflowsPage ? "workflow-selected" : ""
+                }`}
+                onClick={() => openWorkflows()}
+              >
+                <span className="workflow-title">
+                  Workflows
+                </span>
 
-                    <span className="workflow-desc">
-                      {workflow.description}
-                    </span>
-                  </button>
-                ),
-              )}
-
-              {!workflows.length && (
-                <div className="empty">
-                  No workflows available
-                </div>
-              )}
+                <span className="workflow-desc">
+                  Browse available workflows
+                </span>
+              </button>
             </div>
-          </div>
-
-          <div className="panel">
-            <button
-              type="button"
-              className={`workflow-row ${
-                reports ? "workflow-selected" : ""
-              }`}
-              onClick={() => openReports()}
-            >
-              <span className="workflow-title">
-                Reports
-              </span>
-
-              <span className="workflow-desc">
-                View all run reports
-              </span>
-            </button>
           </div>
         </aside>
 
@@ -919,11 +875,28 @@ function App() {
           )}
 
           {/* ================================================= */}
+          {/* Workflows page */}
+          {/* ================================================= */}
+
+          {workflowsPage && (
+            <WorkflowsPage
+              onSelectWorkflow={(id) => {
+                if (id) {
+                  selectWorkflow(id);
+                } else {
+                  clear();
+                }
+              }}
+            />
+          )}
+
+          {/* ================================================= */}
           {/* Workflow page */}
           {/* ================================================= */}
 
           {!settings &&
             !reports &&
+            !workflowsPage &&
             workflowId && (
             <WorkflowView
               workflowId={workflowId}
@@ -938,6 +911,7 @@ function App() {
 
           {!settings &&
             !reports &&
+            !workflowsPage &&
             !workflowId &&
             run && (
             <>
@@ -2347,6 +2321,7 @@ type Route = {
   workflowId: string | null;
   settings: boolean;
   reports: boolean;
+  workflowsPage: boolean;
 };
 
 const EMPTY_ROUTE: Route = {
@@ -2354,6 +2329,7 @@ const EMPTY_ROUTE: Route = {
   workflowId: null,
   settings: false,
   reports: false,
+  workflowsPage: false,
 };
 
 function parseHashSegment(
@@ -2392,6 +2368,26 @@ function parseRoute(
       workflowId: null,
 
       settings: false,
+
+      reports: false,
+
+      workflowsPage: false,
+    };
+  }
+
+  if (
+    hash === "#/workflows"
+  ) {
+    return {
+      runId: null,
+
+      workflowId: null,
+
+      settings: false,
+
+      reports: false,
+
+      workflowsPage: true,
     };
   }
 
@@ -2409,6 +2405,10 @@ function parseRoute(
         ),
 
       settings: false,
+
+      reports: false,
+
+      workflowsPage: false,
     };
   }
 
@@ -2425,6 +2425,8 @@ function parseRoute(
       settings: true,
 
       reports: false,
+
+      workflowsPage: false,
     };
   }
 
@@ -2441,6 +2443,8 @@ function parseRoute(
       settings: false,
 
       reports: true,
+
+      workflowsPage: false,
     };
   }
 
@@ -2461,6 +2465,10 @@ function settingsHash(): string {
 
 function reportsHash(): string {
   return "#/reports";
+}
+
+function workflowsHash(): string {
+  return "#/workflows";
 }
 
 function useRoute() {
@@ -2553,6 +2561,12 @@ function useRoute() {
       [push],
     );
 
+  const openWorkflows =
+    useCallback(
+      () => push(workflowsHash()),
+      [push],
+    );
+
   const clear =
     useCallback(() => {
       const url =
@@ -2583,6 +2597,8 @@ function useRoute() {
 
     reports: route.reports,
 
+    workflowsPage: route.workflowsPage,
+
     selectRun,
 
     selectWorkflow,
@@ -2590,6 +2606,8 @@ function useRoute() {
     openSettings,
 
     openReports,
+
+    openWorkflows,
 
     clear,
   };
@@ -2630,6 +2648,87 @@ function ExecutionChip({
         #{execution.attempt}
       </span>
     </button>
+  );
+}
+
+// ============================================================
+// Workflows page
+// ============================================================
+
+function WorkflowsPage({
+  onSelectWorkflow,
+}: {
+  onSelectWorkflow: (id: string) => void;
+}) {
+  const [list, setList] =
+    useState<Workflow[]>([]);
+
+  useEffect(() => {
+    let disposed = false;
+
+    getWorkflows()
+      .then((workflows) => {
+        if (disposed) return;
+        setList(workflows);
+      })
+      .catch(() => {});
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  return (
+    <section className="panel">
+      <details className="panel-collapsible" open>
+        <summary className="panel-header">
+          <span className="caret">{"\u25B8"}</span>
+          <h2>Workflows</h2>
+          <span>{list.length}</span>
+        </summary>
+
+        <div className="workflow-list">
+          <button
+            type="button"
+            className="workflow-row"
+            onClick={() => onSelectWorkflow("")}
+          >
+            <span className="workflow-title">
+              Auto
+            </span>
+
+            <span className="workflow-desc">
+              Choose automatically from the request
+            </span>
+          </button>
+
+          {list.map((workflow) => (
+            <button
+              key={workflow.id}
+              type="button"
+              className="workflow-row"
+              onClick={() =>
+                onSelectWorkflow(workflow.id)
+              }
+            >
+              <span className="workflow-title">
+                {workflow.title}
+              </span>
+
+              <span className="workflow-desc">
+                {workflow.description}
+              </span>
+            </button>
+          ))}
+
+          {!list.length && (
+            <div className="empty">
+              No workflows available
+            </div>
+          )}
+        </div>
+      </details>
+    </section>
   );
 }
 
