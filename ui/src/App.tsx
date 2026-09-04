@@ -13,6 +13,7 @@ import {
   createRun,
   deleteRun,
   getAllReports,
+  getAnalytics,
   getAudioUrl,
   getRun,
   getRunAudio,
@@ -29,6 +30,7 @@ import {
 import type {
   AgentActivity,
   AgentExecution,
+  Analytics,
   AudioFile,
   ExecutionEdge,
   ExecutionNode,
@@ -127,7 +129,7 @@ function App() {
   const [task, setTask] = useState("");
   const [starting, setStarting] = useState(false);
 
-  const { runId, workflowId, settings, reports, workflowsPage, selectRun, selectWorkflow, openSettings, openReports, openWorkflows, clear } =
+  const { runId, workflowId, settings, reports, workflowsPage, analytics, selectRun, selectWorkflow, openSettings, openReports, openWorkflows, openAnalytics, clear } =
     useRoute();
 
   const [run, setRun] =
@@ -878,6 +880,22 @@ function App() {
                   Browse available workflows
                 </span>
               </button>
+
+              <button
+                type="button"
+                className={`workflow-row ${
+                  analytics ? "workflow-selected" : ""
+                }`}
+                onClick={() => openAnalytics()}
+              >
+                <span className="workflow-title">
+                  Analytics
+                </span>
+
+                <span className="workflow-desc">
+                  LLM & tool call insights
+                </span>
+              </button>
             </div>
           </div>
         </aside>
@@ -922,12 +940,21 @@ function App() {
           )}
 
           {/* ================================================= */}
+          {/* Analytics page */}
+          {/* ================================================= */}
+
+          {analytics && (
+            <AnalyticsPage />
+          )}
+
+          {/* ================================================= */}
           {/* Workflow page */}
           {/* ================================================= */}
 
           {!settings &&
             !reports &&
             !workflowsPage &&
+            !analytics &&
             workflowId && (
             <WorkflowView
               workflowId={workflowId}
@@ -943,6 +970,7 @@ function App() {
           {!settings &&
             !reports &&
             !workflowsPage &&
+            !analytics &&
             !workflowId &&
             run && (
             <>
@@ -2353,6 +2381,7 @@ type Route = {
   settings: boolean;
   reports: boolean;
   workflowsPage: boolean;
+  analytics: boolean;
 };
 
 const EMPTY_ROUTE: Route = {
@@ -2361,6 +2390,7 @@ const EMPTY_ROUTE: Route = {
   settings: false,
   reports: false,
   workflowsPage: false,
+  analytics: false,
 };
 
 function parseHashSegment(
@@ -2403,6 +2433,8 @@ function parseRoute(
       reports: false,
 
       workflowsPage: false,
+
+      analytics: false,
     };
   }
 
@@ -2419,6 +2451,8 @@ function parseRoute(
       reports: false,
 
       workflowsPage: true,
+
+      analytics: false,
     };
   }
 
@@ -2440,6 +2474,8 @@ function parseRoute(
       reports: false,
 
       workflowsPage: false,
+
+      analytics: false,
     };
   }
 
@@ -2458,6 +2494,8 @@ function parseRoute(
       reports: false,
 
       workflowsPage: false,
+
+      analytics: false,
     };
   }
 
@@ -2476,6 +2514,28 @@ function parseRoute(
       reports: true,
 
       workflowsPage: false,
+
+      analytics: false,
+    };
+  }
+
+  if (
+    hash.startsWith(
+      "#/analytics",
+    )
+  ) {
+    return {
+      runId: null,
+
+      workflowId: null,
+
+      settings: false,
+
+      reports: false,
+
+      workflowsPage: false,
+
+      analytics: true,
     };
   }
 
@@ -2500,6 +2560,10 @@ function reportsHash(): string {
 
 function workflowsHash(): string {
   return "#/workflows";
+}
+
+function analyticsHash(): string {
+  return "#/analytics";
 }
 
 function useRoute() {
@@ -2598,6 +2662,12 @@ function useRoute() {
       [push],
     );
 
+  const openAnalytics =
+    useCallback(
+      () => push(analyticsHash()),
+      [push],
+    );
+
   const clear =
     useCallback(() => {
       const url =
@@ -2630,6 +2700,8 @@ function useRoute() {
 
     workflowsPage: route.workflowsPage,
 
+    analytics: route.analytics,
+
     selectRun,
 
     selectWorkflow,
@@ -2639,6 +2711,8 @@ function useRoute() {
     openReports,
 
     openWorkflows,
+
+    openAnalytics,
 
     clear,
   };
@@ -4425,6 +4499,265 @@ function eventMessage(
   }
 
   return "";
+}
+
+// ============================================================
+// Analytics Page
+// ============================================================
+
+function AnalyticsPage() {
+  const [analytics, setAnalytics] =
+    useState<Analytics | null>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  useEffect(() => {
+    getAnalytics()
+      .then((data) => {
+        setAnalytics(data);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to load analytics", err);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return <div className="p-6 text-gray-400">Loading analytics...</div>;
+  }
+
+  if (!analytics) {
+    return <div className="p-6 text-red-400">Failed to load analytics</div>;
+  }
+
+  const { overview, llmByRun, toolStats, toolFailures, llmFailures, edgeStats, runDurations } = analytics;
+
+  function formatDuration(sec: number): string {
+    if (sec < 60) return `${sec.toFixed(1)}s`;
+    const min = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${min}m ${s.toFixed(0)}s`;
+  }
+
+  function formatTime(dateStr: string): string {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  return (
+    <div className="analytics-page p-6 space-y-8">
+      {/* Summary Cards */}
+      <div className="analytics-grid grid grid-cols-4 gap-4">
+        <div className="analytics-card p-4 rounded-lg bg-gray-800 border border-gray-700">
+          <div className="text-sm text-gray-400 mb-1">Runs</div>
+          <div className="text-2xl font-bold">{overview.totalRuns}</div>
+          <div className="text-xs text-green-400 mt-1">{overview.completedRuns} completed</div>
+          {overview.failedRuns > 0 && (
+            <div className="text-xs text-red-400">{overview.failedRuns} failed</div>
+          )}
+          <div className="text-xs text-gray-500 mt-1">avg {formatDuration(overview.avgRunDuration)}</div>
+        </div>
+
+        <div className="analytics-card p-4 rounded-lg bg-gray-800 border border-gray-700">
+          <div className="text-sm text-gray-400 mb-1">LLM Calls</div>
+          <div className="text-2xl font-bold">{overview.totalLLMCalls}</div>
+          <div className="text-xs text-green-400 mt-1">{overview.completedLLM} completed</div>
+          {overview.failedLLM > 0 && (
+            <div className="text-xs text-red-400">{overview.failedLLM} failed</div>
+          )}
+          <div className="text-xs text-gray-500 mt-1">avg {formatDuration(overview.avgLLMDuration)}</div>
+        </div>
+
+        <div className="analytics-card p-4 rounded-lg bg-gray-800 border border-gray-700">
+          <div className="text-sm text-gray-400 mb-1">Tool Calls</div>
+          <div className="text-2xl font-bold">{overview.totalToolCalls}</div>
+          <div className="text-xs text-green-400 mt-1">{overview.completedTools} completed</div>
+          {overview.failedTools > 0 && (
+            <div className="text-xs text-red-400">{overview.failedTools} failed</div>
+          )}
+          <div className="text-xs text-gray-500 mt-1">avg {formatDuration(overview.avgToolDuration)}</div>
+        </div>
+
+        <div className="analytics-card p-4 rounded-lg bg-gray-800 border border-gray-700">
+          <div className="text-sm text-gray-400 mb-1">Agent Executions</div>
+          <div className="text-2xl font-bold">{overview.totalAgents}</div>
+          <div className="text-xs text-green-400 mt-1">{overview.completedAgents} completed</div>
+          <div className="text-xs text-gray-500 mt-1">{overview.totalEvents} events</div>
+        </div>
+      </div>
+
+      {/* LLM Calls by Run */}
+      {llmByRun.length > 0 && (
+        <div className="analytics-section">
+          <h3 className="text-lg font-semibold mb-3">LLM Calls by Run</h3>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Run</th>
+                <th className="text-right py-2 px-3 text-gray-400 font-medium">Calls</th>
+                <th className="text-right py-2 px-3 text-gray-400 font-medium">Failed</th>
+                <th className="text-right py-2 px-3 text-gray-400 font-medium">Avg</th>
+                <th className="text-right py-2 px-3 text-gray-400 font-medium">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {llmByRun.map((r) => (
+                <tr key={r.runId} className="border-b border-gray-800">
+                  <td className="py-2 px-3 truncate max-w-xs">{r.task || r.runId}</td>
+                  <td className="text-right py-2 px-3">{r.count}</td>
+                  <td className="text-right py-2 px-3">{r.failed > 0 ? <span className="text-red-400">{r.failed}</span> : "0"}</td>
+                  <td className="text-right py-2 px-3 text-gray-400">{formatDuration(r.avgSec)}</td>
+                  <td className="text-right py-2 px-3 text-gray-400">{formatDuration(r.totalSec)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Tool Call Stats */}
+      {toolStats.length > 0 && (
+        <div className="analytics-section">
+          <h3 className="text-lg font-semibold mb-3">Tool Usage</h3>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Tool</th>
+                <th className="text-right py-2 px-3 text-gray-400 font-medium">Calls</th>
+                <th className="text-right py-2 px-3 text-gray-400 font-medium">Success</th>
+                <th className="text-right py-2 px-3 text-gray-400 font-medium">Failed</th>
+                <th className="text-right py-2 px-3 text-gray-400 font-medium">Avg</th>
+              </tr>
+            </thead>
+            <tbody>
+              {toolStats.map((t) => (
+                <tr key={t.toolId} className="border-b border-gray-800">
+                  <td className="py-2 px-3 font-mono text-xs">{t.toolId}</td>
+                  <td className="text-right py-2 px-3">{t.count}</td>
+                  <td className="text-right py-2 px-3 text-green-400">{t.completed}</td>
+                  <td className="text-right py-2 px-3">{t.failed > 0 ? <span className="text-red-400">{t.failed}</span> : "0"}</td>
+                  <td className="text-right py-2 px-3 text-gray-400">{formatDuration(t.avgSec)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Tool Failures */}
+      {toolFailures.length > 0 && (
+        <div className="analytics-section">
+          <h3 className="text-lg font-semibold mb-3 text-red-400">Tool Failures ({toolFailures.length})</h3>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Time</th>
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Task</th>
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Tool</th>
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {toolFailures.map((f, i) => (
+                <tr key={i} className="border-b border-gray-800">
+                  <td className="py-2 px-3 text-gray-500 whitespace-nowrap">{formatTime(f.startedAt)}</td>
+                  <td className="py-2 px-3 truncate max-w-xs">{f.task || f.runId}</td>
+                  <td className="py-2 px-3 font-mono text-xs">{f.toolId}</td>
+                  <td className="py-2 px-3 text-red-300 max-w-md truncate">{f.error}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* LLM Failures */}
+      {llmFailures.length > 0 && (
+        <div className="analytics-section">
+          <h3 className="text-lg font-semibold mb-3 text-red-400">LLM Failures ({llmFailures.length})</h3>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Time</th>
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Task</th>
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {llmFailures.map((f, i) => (
+                <tr key={i} className="border-b border-gray-800">
+                  <td className="py-2 px-3 text-gray-500 whitespace-nowrap">{formatTime(f.startedAt)}</td>
+                  <td className="py-2 px-3 truncate max-w-xs">{f.task || f.runId}</td>
+                  <td className="py-2 px-3 text-red-300 max-w-md truncate">{f.error}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Edge Activations */}
+      {edgeStats.length > 0 && (
+        <div className="analytics-section">
+          <h3 className="text-lg font-semibold mb-3">Edge Activations</h3>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Edge</th>
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">From</th>
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">To</th>
+                <th className="text-right py-2 px-3 text-gray-400 font-medium">Activated</th>
+                <th className="text-right py-2 px-3 text-gray-400 font-medium">Consumed</th>
+              </tr>
+            </thead>
+            <tbody>
+              {edgeStats.map((e, i) => (
+                <tr key={i} className="border-b border-gray-800">
+                  <td className="py-2 px-3 font-mono text-xs">{e.edgeId}</td>
+                  <td className="py-2 px-3 font-mono text-xs">{e.fromNode}</td>
+                  <td className="py-2 px-3 font-mono text-xs">{e.toNode}</td>
+                  <td className="text-right py-2 px-3">{e.activated}</td>
+                  <td className="text-right py-2 px-3">{e.consumed < e.activated ? <span className="text-yellow-400">{e.consumed}/{e.activated}</span> : e.consumed}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Run Durations */}
+      {runDurations.length > 0 && (
+        <div className="analytics-section">
+          <h3 className="text-lg font-semibold mb-3">Run Durations</h3>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Started</th>
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Task</th>
+                <th className="text-left py-2 px-3 text-gray-400 font-medium">Status</th>
+                <th className="text-right py-2 px-3 text-gray-400 font-medium">Duration</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runDurations.map((r) => (
+                <tr key={r.runId} className="border-b border-gray-800">
+                  <td className="py-2 px-3 text-gray-500 whitespace-nowrap">{formatTime(r.startedAt)}</td>
+                  <td className="py-2 px-3 truncate max-w-xs">{r.task || r.runId}</td>
+                  <td className="py-2 px-3">
+                    <span className={`status-dot status-${r.status}`} style={{ marginRight: 6 }} />
+                    {r.status}
+                  </td>
+                  <td className="text-right py-2 px-3 text-gray-400">{r.durationSec > 0 ? formatDuration(r.durationSec) : "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default App;

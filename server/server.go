@@ -254,6 +254,11 @@ func (s *Server) Handler() http.Handler {
 		s.answerQuestion,
 	)
 
+	mux.HandleFunc(
+		"GET /api/analytics",
+		s.getAnalytics,
+	)
+
 	return withCORS(mux)
 }
 
@@ -2056,6 +2061,74 @@ func writeJSON(
 	_ = json.NewEncoder(
 		w,
 	).Encode(value)
+}
+
+// ------------------------------------------------------------
+// Analytics
+// ------------------------------------------------------------
+
+func (s *Server) getAnalytics(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if s.Runs.Store() == nil {
+		http.Error(w, "store not available", http.StatusNotFound)
+		return
+	}
+
+	store := s.Runs.Store()
+
+	overview, err := store.GetAnalyticsOverview()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	llmByRun, err := store.GetLLMCallsByRun()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	toolStats, err := store.GetToolCallStats()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	toolFailures, err := store.GetToolFailures()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	llmFailures, err := store.GetLLMFailures()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	edgeStats, err := store.GetEdgeActivationStats()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	runDurations, err := store.GetRunDurations()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]any{
+		"overview":      overview,
+		"llmByRun":      llmByRun,
+		"toolStats":     toolStats,
+		"toolFailures":  toolFailures,
+		"llmFailures":   llmFailures,
+		"edgeStats":     edgeStats,
+		"runDurations":  runDurations,
+	})
 }
 
 // ------------------------------------------------------------

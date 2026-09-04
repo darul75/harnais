@@ -216,3 +216,80 @@ export type AudioFile = {
   size: number;
   modified: string;
 };
+
+export type AnalyticsOverview = {
+  totalRuns: number;
+  completedRuns: number;
+  failedRuns: number;
+  runningRuns: number;
+  totalLLMCalls: number;
+  completedLLM: number;
+  failedLLM: number;
+  totalToolCalls: number;
+  completedTools: number;
+  failedTools: number;
+  totalAgents: number;
+  completedAgents: number;
+  totalEvents: number;
+  avgRunDuration: number;
+  avgLLMDuration: number;
+  avgToolDuration: number;
+};
+
+export type LLMCallByRun = {
+  runId: string;
+  task: string;
+  count: number;
+  failed: number;
+  avgSec: number;
+  totalSec: number;
+};
+
+export type ToolCallStats = {
+  toolId: string;
+  count: number;
+  completed: number;
+  failed: number;
+  avgSec: number;
+};
+
+export type ToolFailure = {
+  runId: string;
+  task: string;
+  toolId: string;
+  error: string;
+  startedAt: string;
+};
+
+export type LLMFailure = {
+  runId: string;
+  task: string;
+  error: string;
+  startedAt: string;
+};
+
+export type EdgeActivationStats = {
+  edgeId: string;
+  fromNode: string;
+  toNode: string;
+  activated: number;
+  consumed: number;
+};
+
+export type RunDuration = {
+  runId: string;
+  task: string;
+  status: string;
+  durationSec: number;
+  startedAt: string;
+};
+
+export type Analytics = {
+  overview: AnalyticsOverview;
+  llmByRun: LLMCallByRun[];
+  toolStats: ToolCallStats[];
+  toolFailures: ToolFailure[];
+  llmFailures: LLMFailure[];
+  edgeStats: EdgeActivationStats[];
+  runDurations: RunDuration[];
+};

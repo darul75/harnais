@@ -156,6 +156,20 @@ export async function deleteRun(runId: string) {
   return response.json();
 }
 
+export async function getAnalytics() {
+  const response = await fetch(
+    `${API_BASE}/api/analytics`,
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await response.text(),
+    );
+  }
+
+  return response.json();
+}
+
 export async function getRunTree(
   runId: string,
 ) {
