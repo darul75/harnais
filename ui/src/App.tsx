@@ -2500,7 +2500,7 @@ const INVISIBLE_CHARS =
   /[\u200B-\u200F\u2060-\u206F\uFEFF\u00AD\u061C\u115F\u1160\u17B4\u17B5\u180E\uFFF9-\uFFFB]/g;
 
 // Private-use-area markers used by some LLMs to wrap citation tokens.
-const PUA_MARKERS = /[\uE000-\uE01F]/g;
+const PUA_MARKERS = /[\uE200-\uE2FF]/g;
 
 // cleanMarkdownContent strips artifacts the web-search LLM copies
 // into its prose before rendering: citation tokens (e.g.
@@ -3266,7 +3266,7 @@ function ReportsPage({
                                   ),
                                 }}
                               >
-                                {content}
+                                {cleanMarkdownContent(content)}
                               </ReactMarkdown>
                             </div>
                           </div>
