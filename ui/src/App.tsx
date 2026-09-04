@@ -126,7 +126,7 @@ function App() {
   const [task, setTask] = useState("");
   const [starting, setStarting] = useState(false);
 
-  const { runId, workflowId, settings, selectRun, selectWorkflow, openSettings, clear } =
+  const { runId, workflowId, settings, reports, selectRun, selectWorkflow, openSettings, openReports, clear } =
     useRoute();
 
   const [run, setRun] =
@@ -875,6 +875,24 @@ function App() {
               )}
             </div>
           </div>
+
+          <div className="panel">
+            <button
+              type="button"
+              className={`workflow-row ${
+                reports ? "workflow-selected" : ""
+              }`}
+              onClick={() => openReports()}
+            >
+              <span className="workflow-title">
+                Reports
+              </span>
+
+              <span className="workflow-desc">
+                View all run reports
+              </span>
+            </button>
+          </div>
         </aside>
 
         {/* =================================================== */}
@@ -891,10 +909,21 @@ function App() {
           )}
 
           {/* ================================================= */}
+          {/* Reports page */}
+          {/* ================================================= */}
+
+          {reports && (
+            <ReportsPage
+              onSelectRun={selectRun}
+            />
+          )}
+
+          {/* ================================================= */}
           {/* Workflow page */}
           {/* ================================================= */}
 
           {!settings &&
+            !reports &&
             workflowId && (
             <WorkflowView
               workflowId={workflowId}
@@ -908,6 +937,7 @@ function App() {
           {/* ================================================= */}
 
           {!settings &&
+            !reports &&
             !workflowId &&
             run && (
             <>
@@ -2316,12 +2346,14 @@ type Route = {
   runId: string | null;
   workflowId: string | null;
   settings: boolean;
+  reports: boolean;
 };
 
 const EMPTY_ROUTE: Route = {
   runId: null,
   workflowId: null,
   settings: false,
+  reports: false,
 };
 
 function parseHashSegment(
@@ -2391,6 +2423,24 @@ function parseRoute(
       workflowId: null,
 
       settings: true,
+
+      reports: false,
+    };
+  }
+
+  if (
+    hash.startsWith(
+      "#/reports",
+    )
+  ) {
+    return {
+      runId: null,
+
+      workflowId: null,
+
+      settings: false,
+
+      reports: true,
     };
   }
 
@@ -2407,6 +2457,10 @@ function workflowHash(id: string): string {
 
 function settingsHash(): string {
   return "#/settings";
+}
+
+function reportsHash(): string {
+  return "#/reports";
 }
 
 function useRoute() {
@@ -2493,6 +2547,12 @@ function useRoute() {
       [push],
     );
 
+  const openReports =
+    useCallback(
+      () => push(reportsHash()),
+      [push],
+    );
+
   const clear =
     useCallback(() => {
       const url =
@@ -2521,11 +2581,15 @@ function useRoute() {
 
     settings: route.settings,
 
+    reports: route.reports,
+
     selectRun,
 
     selectWorkflow,
 
     openSettings,
+
+    openReports,
 
     clear,
   };
@@ -2566,6 +2630,253 @@ function ExecutionChip({
         #{execution.attempt}
       </span>
     </button>
+  );
+}
+
+// ============================================================
+// Reports page
+// ============================================================
+
+function ReportsPage({
+  onSelectRun,
+}: {
+  onSelectRun: (id: string) => void;
+}) {
+  const [reportList, setReportList] =
+    useState<Report[] | null>(null);
+  const [runMap, setRunMap] =
+    useState<Map<string, RunSummary>>(new Map());
+  const [summaries, setSummaries] =
+    useState<Map<string, string>>(new Map());
+  const [selected, setSelected] =
+    useState<Report | null>(null);
+  const [content, setContent] =
+    useState<string | null>(null);
+  const [error, setError] =
+    useState<string | null>(null);
+  const [loading, setLoading] =
+    useState(true);
+
+  // Load all reports
+  useEffect(() => {
+    let disposed = false;
+
+    setLoading(true);
+    getAllReports()
+      .then((list) => {
+        if (disposed) return;
+        setReportList(list);
+        setLoading(false);
+      })
+      .catch((err) => {
+        if (disposed) return;
+        setError(String(err));
+        setLoading(false);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  // Load run metadata for each run that has reports
+  useEffect(() => {
+    if (!reportList) return;
+
+    const runIds = [...new Set(reportList.map((r) => r.runId))];
+    const map = new Map<string, RunSummary>();
+
+    Promise.all(
+      runIds.map(async (id) => {
+        try {
+          const run = await getRun(id);
+          return { id, run };
+        } catch {
+          return { id, run: null };
+        }
+      }),
+    ).then((results) => {
+      for (const { id, run } of results) {
+        if (run) map.set(id, run);
+      }
+      setRunMap(map);
+    });
+  }, [reportList]);
+
+  // Extract summaries for each report
+  useEffect(() => {
+    if (!reportList) return;
+
+    const map = new Map<string, string>();
+
+    for (const report of reportList) {
+      const key = `${report.runId}/${report.name}`;
+      if (summaries.has(key)) continue;
+
+      getRunReport(report.runId, report.name)
+        .then((text) => {
+          // Strip markdown syntax and take first ~150 chars
+          const plain = text
+            .replace(/#{1,6}\s/g, "")
+            .replace(/\*\*(.+?)\*\*/g, "$1")
+            .replace(/\*(.+?)\*/g, "$1")
+            .replace(/`(.+?)`/g, "$1")
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+            .replace(/^- /gm, "")
+            .replace(/\n+/g, " ")
+            .trim();
+          const summary =
+            plain.length > 160
+              ? plain.slice(0, 160) + "…"
+              : plain;
+          setSummaries((prev) => {
+            const next = new Map(prev);
+            next.set(key, summary);
+            return next;
+          });
+        })
+        .catch(() => {});
+    }
+  }, [reportList]);
+
+  function open(report: Report) {
+    setSelected(report);
+    setContent(null);
+    getRunReport(report.runId, report.name)
+      .then(setContent)
+      .catch((err) => setContent(`Error loading: ${err}`));
+  }
+
+  // Group by run
+  const grouped = useMemo(() => {
+    if (!reportList) return [];
+    const byRun = new Map<string, Report[]>();
+    for (const report of reportList) {
+      const list = byRun.get(report.runId) ?? [];
+      list.push(report);
+      byRun.set(report.runId, list);
+    }
+    return [...byRun.entries()];
+  }, [reportList]);
+
+  if (loading) {
+    return (
+      <section className="panel">
+        <div className="loading">Loading reports...</div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section className="panel">
+        <div className="error">{error}</div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel">
+      <details className="panel-collapsible" open>
+        <summary className="panel-header">
+          <span className="caret">{"\u25B8"}</span>
+          <h2>Reports</h2>
+          <span>{reportList?.length ?? 0}</span>
+        </summary>
+
+        <div className="reports-page">
+          <div className="reports-list">
+            {grouped.map(([runID, list]) => {
+              const run = runMap.get(runID);
+              return (
+                <div key={runID} className="reports-run-group">
+                  <div className="reports-run-header">
+                    <button
+                      type="button"
+                      className="reports-run-link"
+                      onClick={() => onSelectRun(runID)}
+                    >
+                      {runID}
+                    </button>
+                    {run && (
+                      <>
+                        <RunStatus status={run.status} />
+                        <span className="reports-run-task">
+                          {run.task?.slice(0, 60) ?? runID}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {list.map((report) => {
+                    const key = `${report.runId}/${report.name}`;
+                    const summary = summaries.get(key) ?? "";
+                    const isSelected =
+                      selected?.runId === report.runId &&
+                      selected?.name === report.name;
+
+                    return (
+                      <div
+                        key={key}
+                        className={`reports-item ${
+                          isSelected ? "reports-item-selected" : ""
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          className="reports-item-btn"
+                          onClick={() => open(report)}
+                        >
+                          <span className="reports-item-icon">
+                            {report.name.endsWith("plan.md")
+                              ? "📋"
+                              : report.name.endsWith("review.md")
+                                ? "📝"
+                                : report.name.startsWith("research")
+                                  ? "🔍"
+                                  : "📄"}
+                          </span>
+
+                          <div className="reports-item-body">
+                            <div className="reports-item-top">
+                              <span className="reports-item-name">
+                                {report.name}
+                              </span>
+                              <span className="reports-item-meta">
+                                {formatBytes(report.size)} ·{" "}
+                                {formatDate(report.modified)}
+                              </span>
+                            </div>
+
+                            {summary && (
+                              <div className="reports-item-summary">
+                                {summary}
+                              </div>
+                            )}
+                          </div>
+                        </button>
+
+                        {isSelected && content && (
+                          <div className="reports-item-content">
+                            <div className="markdown">
+                              <ReactMarkdown>{content}</ReactMarkdown>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+
+            {(!reportList || reportList.length === 0) && (
+              <div className="empty">No reports yet</div>
+            )}
+          </div>
+        </div>
+      </details>
+    </section>
   );
 }
 

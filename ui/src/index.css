@@ -2467,3 +2467,145 @@ details[open] > summary .caret {
 
   cursor: not-allowed;
 }
+
+/* --------------------------------------------------------- */
+/* Reports page                                              */
+/* --------------------------------------------------------- */
+
+.reports-page {
+  padding: 16px;
+}
+
+.reports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.reports-run-group {
+  border: 1px solid #374151;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.reports-run-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #1a2332;
+  border-bottom: 1px solid #374151;
+  flex-wrap: wrap;
+}
+
+.reports-run-link {
+  font-family: monospace;
+  font-size: 13px;
+  color: #60a5fa;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.reports-run-link:hover {
+  text-decoration: underline;
+}
+
+.reports-run-task {
+  color: #9ca3af;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.reports-item {
+  border-bottom: 1px solid #374151;
+}
+
+.reports-item:last-child {
+  border-bottom: none;
+}
+
+.reports-item-selected {
+  background: #1a2332;
+}
+
+.reports-item-btn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: #d1d5db;
+}
+
+.reports-item-btn:hover {
+  background: #273449;
+}
+
+.reports-item-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.reports-item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.reports-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.reports-item-name {
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f9fafb;
+}
+
+.reports-item-meta {
+  color: #6b7280;
+  font-size: 11px;
+  font-family: monospace;
+  white-space: nowrap;
+}
+
+.reports-item-summary {
+  margin-top: 6px;
+  color: #9ca3af;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.reports-item-content {
+  padding: 0 14px 14px;
+  border-top: 1px solid #374151;
+  margin-top: 0;
+}
+
+.reports-item-content .markdown {
+  padding-top: 12px;
+  max-height: 500px;
+  overflow-y: auto;
+}
