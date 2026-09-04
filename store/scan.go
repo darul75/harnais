@@ -512,11 +512,15 @@ func toJSON(v any) string {
 	return string(b)
 }
 
+func formatTime(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04:05.000")
+}
+
 func optionalTime(t *time.Time) interface{} {
 	if t == nil {
 		return nil
 	}
-	return t
+	return t.UTC().Format("2006-01-02 15:04:05.000")
 }
 
 func jsonMust(v any) string {

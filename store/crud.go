@@ -10,7 +10,7 @@ import (
 func (s *RunStore) CreateRun(id, workflowID, task string, startedAt time.Time) error {
 	_, err := s.db.Exec(
 		`INSERT INTO runs (id, workflow_id, task, status, started_at) VALUES (?, ?, ?, 'running', ?)`,
-		id, workflowID, task, startedAt,
+		id, workflowID, task, formatTime(startedAt),
 	)
 	return err
 }
@@ -79,11 +79,11 @@ func (s *RunStore) AddNodeExecution(runID string, e *graph.NodeExecution) error 
 			id, run_id, node_id, worker_id, attempt, status,
 			input, output, error, started_at, completed_at, triggered_by
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.ID, runID, e.NodeID, e.WorkerID, e.Attempt, e.Status,
+		e.ID, runID, 		e.NodeID, e.WorkerID, e.Attempt, e.Status,
 		toJSON(e.Input),
 		toJSON(e.Output),
 		e.Error,
-		e.StartedAt,
+		formatTime(e.StartedAt),
 		optionalTime(e.CompletedAt),
 		jsonMust(e.TriggeredBy),
 	)
@@ -126,7 +126,7 @@ func (s *RunStore) AddAgentExecution(runID string, e *graph.AgentExecution) erro
 			started_at, completed_at, error
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.ID, runID, e.NodeExecutionID, e.AgentID, e.Status,
-		e.StartedAt,
+		formatTime(e.StartedAt),
 		optionalTime(e.CompletedAt),
 		e.Error,
 	)
@@ -175,7 +175,7 @@ func (s *RunStore) AddAgentActivity(runID string, a *graph.AgentActivity) error 
 			llm_call_id, tool_call_id, started_at, completed_at, status
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.ID, a.AgentExecutionID, runID, a.Sequence, a.Kind,
-		llmCallID, toolCallID, a.StartedAt, optionalTime(a.CompletedAt), a.Status,
+		llmCallID, toolCallID, formatTime(a.StartedAt), optionalTime(a.CompletedAt), a.Status,
 	)
 	return err
 }
@@ -206,7 +206,7 @@ func (s *RunStore) AddLLMCall(runID string, c *graph.LLMCall) error {
 		c.Reasoning,
 		c.Response,
 		c.RequestedTool,
-		c.StartedAt,
+		formatTime(c.StartedAt),
 		optionalTime(c.CompletedAt),
 		c.Error,
 	)
@@ -239,7 +239,7 @@ func (s *RunStore) AddToolCall(runID string, c *graph.ToolCall) error {
 		c.ID, runID, c.AgentExecutionID, c.Sequence, c.ToolID, c.Status,
 		toJSON(c.Input),
 		toJSON(c.Output),
-		c.StartedAt,
+		formatTime(c.StartedAt),
 		optionalTime(c.CompletedAt),
 		c.Error,
 	)
@@ -266,7 +266,7 @@ func (s *RunStore) AddEdgeActivation(runID string, a *graph.EdgeActivation) erro
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		a.ID, runID, a.EdgeID, a.FromExecutionID, a.FromNodeID,
 		a.ToNodeID,
-		a.CreatedAt,
+		formatTime(a.CreatedAt),
 		optionalTime(a.ConsumedAt),
 	)
 	return err
@@ -324,7 +324,7 @@ func (s *RunStore) AddEvent(e *graph.Event) error {
 			agent_id, tool_id, message, data, time
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.RunID, e.Type, e.NodeID, e.ExecutionID, e.WorkerID,
-		e.AgentID, e.ToolID, e.Message, jsonMust(e.Data), e.Time,
+		e.AgentID, e.ToolID, e.Message, jsonMust(e.Data), formatTime(e.Time),
 	)
 	return err
 }
