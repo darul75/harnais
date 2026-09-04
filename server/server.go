@@ -205,6 +205,11 @@ func (s *Server) Handler() http.Handler {
 	)
 
 	mux.HandleFunc(
+		"DELETE /api/runs/{runID}",
+		s.deleteRun,
+	)
+
+	mux.HandleFunc(
 		"GET /api/runs/{runID}/graph",
 		s.getGraph,
 	)
@@ -1549,6 +1554,30 @@ func (s *Server) getRun(
 			"completedAt": detail.CompletedAt,
 		},
 	)
+}
+
+func (s *Server) deleteRun(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	runID := r.PathValue("runID")
+
+	// Delete from RunManager (in-memory + SQLite)
+	if err := s.Runs.DeleteRun(runID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete asset files (reports, audio)
+	reportsDir, err := s.Workspace.Resolve(filepath.Join("reports", runID))
+	if err != nil {
+		fmt.Printf("[DELETE] failed to resolve reports dir: %v\n", err)
+	} else if err := os.RemoveAll(reportsDir); err != nil {
+		fmt.Printf("[DELETE] failed to remove reports dir %s: %v\n", reportsDir, err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	writeJSON(w, map[string]string{"status": "deleted", "runId": runID})
 }
 
 // ------------------------------------------------------------

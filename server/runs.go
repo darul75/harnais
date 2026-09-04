@@ -140,6 +140,18 @@ func (m *RunManager) UpdateStatus(runID string, status graph.Status, completedAt
 	}
 }
 
+func (m *RunManager) DeleteRun(runID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	delete(m.runs, runID)
+
+	if m.store != nil {
+		return m.store.DeleteRun(runID)
+	}
+	return nil
+}
+
 func (m *RunManager) PersistRunSnapshot(runID string) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

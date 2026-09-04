@@ -141,6 +141,21 @@ export async function getRuns() {
   return (await response.json()) as RunSummary[];
 }
 
+export async function deleteRun(runId: string) {
+  const response = await fetch(
+    `${API_BASE}/api/runs/${encodeURIComponent(runId)}`,
+    { method: "DELETE" },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await response.text(),
+    );
+  }
+
+  return response.json();
+}
+
 export async function getRunTree(
   runId: string,
 ) {

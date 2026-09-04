@@ -44,8 +44,33 @@ func (s *RunStore) ListRuns() ([]RunRecord, error) {
 }
 
 func (s *RunStore) DeleteRun(id string) error {
-	_, err := s.db.Exec(`DELETE FROM runs WHERE id = ?`, id)
-	return err
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Delete child records explicitly (SQLite FK cascade requires PRAGMA).
+	tables := []string{
+		"events",
+		"edge_activations",
+		"tool_calls",
+		"llm_calls",
+		"agent_activities",
+		"agent_executions",
+		"node_executions",
+	}
+	for _, t := range tables {
+		if _, err := tx.Exec(fmt.Sprintf("DELETE FROM %s WHERE run_id = ?", t), id); err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.Exec("DELETE FROM runs WHERE id = ?", id); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (s *RunStore) AddNodeExecution(runID string, e *graph.NodeExecution) error {

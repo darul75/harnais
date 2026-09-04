@@ -11,6 +11,7 @@ import {
   ApiError,
   createEventSource,
   createRun,
+  deleteRun,
   getAllReports,
   getAudioUrl,
   getRun,
@@ -203,6 +204,21 @@ function App() {
         "Failed to load runs",
         err,
       );
+    }
+  }
+
+  async function handleDeleteRun(runId: string) {
+    if (!confirm("Delete this run and all its data?")) {
+      return;
+    }
+    try {
+      await deleteRun(runId);
+      if (runId === run?.id) {
+        selectRun(null);
+      }
+      refreshRuns();
+    } catch (err) {
+      console.error("Failed to delete run", err);
     }
   }
 
@@ -770,33 +786,48 @@ function App() {
 
             <div className="run-list">
               {runs.map((summary) => (
-                <button
+                <div
                   key={summary.id}
-                  type="button"
                   className={`run-row ${
                     summary.id === runId
                       ? "run-selected"
                       : ""
                   }`}
-                  onClick={() =>
-                    switchRun(summary.id)
-                  }
                 >
-                  <span
-                    className={`status-dot status-${summary.status}`}
-                  />
+                  <button
+                    type="button"
+                    className="run-button"
+                    onClick={() =>
+                      switchRun(summary.id)
+                    }
+                  >
+                    <span
+                      className={`status-dot status-${summary.status}`}
+                    />
 
-                  <span className="run-task">
-                    {summary.task ||
-                      summary.id}
-                  </span>
+                    <span className="run-task">
+                      {summary.task ||
+                        summary.id}
+                    </span>
 
-                  <span className="run-meta">
-                    {formatTime(
-                      summary.startedAt,
-                    )}
-                  </span>
-                </button>
+                    <span className="run-meta">
+                      {formatTime(
+                        summary.startedAt,
+                      )}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="run-delete"
+                    title="Delete run"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteRun(summary.id);
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
 
               {!runs.length && (
