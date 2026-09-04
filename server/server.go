@@ -1856,9 +1856,13 @@ func (s *Server) events(
 
 	if !exists {
 		if s.Runs.Store() != nil {
-			if record, err := s.Runs.Store().GetRun(runID); err == nil {
+			if _, err := s.Runs.Store().GetRun(runID); err == nil {
+				events, _ := s.Runs.Store().GetEvents(runID)
 				w.Header().Set("Content-Type", "text/event-stream")
-				fmt.Fprintf(w, "event: run.%s\ndata: {\"id\":\"%s\"}\n\n", record.Status, runID)
+				for _, e := range events {
+					data, _ := json.Marshal(e)
+					fmt.Fprintf(w, "data: %s\n\n", data)
+				}
 				return
 			}
 		}

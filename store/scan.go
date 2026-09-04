@@ -466,6 +466,41 @@ func scanEdgeActivations(rows *sql.Rows) ([]*graph.EdgeActivation, error) {
 	return activations, rows.Err()
 }
 
+func scanEvents(rows *sql.Rows) ([]graph.Event, error) {
+	var events []graph.Event
+	for rows.Next() {
+		var e graph.Event
+		var dataStr string
+		var id int64
+
+		if err := rows.Scan(
+			&id,
+			&e.RunID,
+			&e.Type,
+			&e.NodeID,
+			&e.ExecutionID,
+			&e.WorkerID,
+			&e.AgentID,
+			&e.ToolID,
+			&e.Message,
+			&dataStr,
+			&e.Time,
+		); err != nil {
+			return nil, err
+		}
+
+		e.ID = uint64(id)
+		if dataStr != "" {
+			if err := json.Unmarshal([]byte(dataStr), &e.Data); err != nil {
+				e.Data = make(map[string]any)
+			}
+		}
+
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
 func toJSON(v any) string {
 	if v == nil {
 		return "null"

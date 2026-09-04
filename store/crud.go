@@ -291,3 +291,31 @@ func (s *RunStore) ReconstructRun(runID string) (*graph.Run, error) {
 
 	return r, nil
 }
+
+func (s *RunStore) AddEvent(e *graph.Event) error {
+	_, err := s.db.Exec(
+		`INSERT INTO events (
+			run_id, event_type, node_id, execution_id, worker_id,
+			agent_id, tool_id, message, data, time
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.RunID, e.Type, e.NodeID, e.ExecutionID, e.WorkerID,
+		e.AgentID, e.ToolID, e.Message, jsonMust(e.Data), e.Time,
+	)
+	return err
+}
+
+func (s *RunStore) GetEvents(runID string) ([]graph.Event, error) {
+	rows, err := s.db.Query(
+		`SELECT id, run_id, event_type, node_id, execution_id,
+			worker_id, agent_id, tool_id, message, data, time
+		FROM events WHERE run_id = ? ORDER BY id ASC`,
+		runID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanEvents(rows)
+}
+

@@ -99,6 +99,21 @@ CREATE INDEX IF NOT EXISTS idx_llm_calls_agent_exec_id ON llm_calls(agent_execut
 CREATE INDEX IF NOT EXISTS idx_tool_calls_run_id ON tool_calls(run_id);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_agent_exec_id ON tool_calls(agent_execution_id);
 CREATE INDEX IF NOT EXISTS idx_edge_activations_run_id ON edge_activations(run_id);
+
+CREATE TABLE IF NOT EXISTS events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    event_type  TEXT NOT NULL,
+    node_id     TEXT NOT NULL DEFAULT '',
+    execution_id TEXT NOT NULL DEFAULT '',
+    worker_id   TEXT NOT NULL DEFAULT '',
+    agent_id    TEXT NOT NULL DEFAULT '',
+    tool_id     TEXT NOT NULL DEFAULT '',
+    message     TEXT NOT NULL DEFAULT '',
+    data        TEXT NOT NULL DEFAULT '{}',
+    time        DATETIME NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id);
 `
 
 func (s *RunStore) initSchema() error {

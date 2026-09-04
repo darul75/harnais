@@ -110,6 +110,11 @@ func main() {
 					event,
 				)
 
+				// Persist event to store
+				if err := runManager.Store().AddEvent(&event); err != nil {
+					fmt.Printf("[PERSIST] failed to persist event: %v\n", err)
+				}
+
 				// Persist run snapshot on completion/failure
 				switch event.Type {
 				case graph.EventRunCompleted, graph.EventRunFailed:
