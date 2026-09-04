@@ -1443,35 +1443,39 @@ func (s *Server) getRuns(
 	r *http.Request,
 ) {
 
-	records :=
-		s.Runs.List()
+	var summaries []runSummary
 
-	summaries :=
-		make(
-			[]runSummary,
-			0,
-			len(records),
-		)
+	storeRecords, err := s.Runs.ListFromStore()
+	if err == nil && len(storeRecords) > 0 {
+		summaries = make([]runSummary, 0, len(storeRecords))
+		for _, rec := range storeRecords {
+			summaries = append(summaries, runSummary{
+				ID:          rec.RunID,
+				Task:        rec.Task,
+				WorkflowID:  rec.WorkflowID,
+				Status:      rec.Status,
+				StartedAt:   rec.StartedAt,
+				CompletedAt: rec.CompletedAt,
+			})
+		}
+	} else {
+		records := s.Runs.List()
+		summaries = make([]runSummary, 0, len(records))
+		for _, record := range records {
+			summaries = append(summaries, runSummary{
+				ID: record.Run.ID,
 
-	for _, record := range records {
+				Task: record.Meta.Task,
 
-		summaries =
-			append(
-				summaries,
-				runSummary{
-					ID: record.Run.ID,
+				WorkflowID: record.Meta.WorkflowID,
 
-					Task: record.Meta.Task,
+				Status: record.Run.Status,
 
-					WorkflowID: record.Meta.WorkflowID,
+				StartedAt: record.Run.StartedAt,
 
-					Status: record.Run.Status,
-
-					StartedAt: record.Run.StartedAt,
-
-					CompletedAt: record.Run.CompletedAt,
-				},
-			)
+				CompletedAt: record.Run.CompletedAt,
+			})
+		}
 	}
 
 	writeJSON(
@@ -1490,39 +1494,53 @@ func (s *Server) getRun(
 	run, exists :=
 		s.Runs.Get(runID)
 
-	if !exists {
+	if exists {
+		snapshot :=
+			run.Snapshot()
 
+		meta, _ :=
+			s.Runs.Meta(runID)
+
+		writeJSON(
+			w,
+			map[string]any{
+				"id": snapshot.ID,
+
+				"task": meta.Task,
+
+				"workflowId": meta.WorkflowID,
+
+				"status": snapshot.Status,
+
+				"startedAt": snapshot.StartedAt,
+
+				"completedAt": snapshot.CompletedAt,
+
+				"state": snapshot.State,
+			},
+		)
+		return
+	}
+
+	detail, err := s.Runs.Store().GetRunDetail(runID)
+	if err != nil {
 		http.Error(
 			w,
 			"run not found",
 			http.StatusNotFound,
 		)
-
 		return
 	}
-
-	snapshot :=
-		run.Snapshot()
-
-	meta, _ :=
-		s.Runs.Meta(runID)
 
 	writeJSON(
 		w,
 		map[string]any{
-			"id": snapshot.ID,
-
-			"task": meta.Task,
-
-			"workflowId": meta.WorkflowID,
-
-			"status": snapshot.Status,
-
-			"startedAt": snapshot.StartedAt,
-
-			"completedAt": snapshot.CompletedAt,
-
-			"state": snapshot.State,
+			"id":          detail.RunID,
+			"task":        detail.Task,
+			"workflowId":  detail.WorkflowID,
+			"status":      detail.Status,
+			"startedAt":   detail.StartedAt,
+			"completedAt": detail.CompletedAt,
 		},
 	)
 }
@@ -1727,23 +1745,30 @@ func (s *Server) getLLMCalls(
 	run, exists :=
 		s.Runs.Get(runID)
 
-	if !exists {
+	if exists {
+		snapshot :=
+			run.Snapshot()
 
+		writeJSON(
+			w,
+			snapshot.LLMCalls,
+		)
+		return
+	}
+
+	calls, err := s.Runs.Store().GetLLMCalls(runID)
+	if err != nil {
 		http.Error(
 			w,
 			"run not found",
 			http.StatusNotFound,
 		)
-
 		return
 	}
 
-	snapshot :=
-		run.Snapshot()
-
 	writeJSON(
 		w,
-		snapshot.LLMCalls,
+		calls,
 	)
 }
 
@@ -1761,23 +1786,30 @@ func (s *Server) getToolCalls(
 	run, exists :=
 		s.Runs.Get(runID)
 
-	if !exists {
+	if exists {
+		snapshot :=
+			run.Snapshot()
 
+		writeJSON(
+			w,
+			snapshot.ToolCalls,
+		)
+		return
+	}
+
+	calls, err := s.Runs.Store().GetToolCalls(runID)
+	if err != nil {
 		http.Error(
 			w,
 			"run not found",
 			http.StatusNotFound,
 		)
-
 		return
 	}
 
-	snapshot :=
-		run.Snapshot()
-
 	writeJSON(
 		w,
-		snapshot.ToolCalls,
+		calls,
 	)
 }
 
