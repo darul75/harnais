@@ -22,7 +22,7 @@ func testSettingsServer(t *testing.T) *httptest.Server {
 
 	api := NewServer(
 		NewEventBus(),
-		NewRunManager(),
+		NewRunManager(nil),
 		store,
 		tools.NewWorkspace(
 			filepath.Join(t.TempDir(), "ws"),

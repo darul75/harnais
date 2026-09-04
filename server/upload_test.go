@@ -25,7 +25,7 @@ func newUploadServer(t *testing.T) (*httptest.Server, *tools.Workspace) {
 
 	api := NewServer(
 		NewEventBus(),
-		NewRunManager(),
+		NewRunManager(nil),
 		config.NewStore(
 			filepath.Join(t.TempDir(), "settings.json"),
 		),

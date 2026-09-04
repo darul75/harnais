@@ -3,8 +3,10 @@ package server
 import (
 	"sort"
 	"sync"
+	"time"
 
 	"harnais/graph"
+	"harnais/store"
 )
 
 type RunMeta struct {
@@ -22,14 +24,14 @@ type RunRecord struct {
 type RunManager struct {
 	mu sync.RWMutex
 
-	runs map[string]*RunRecord
+	runs  map[string]*RunRecord
+	store *store.RunStore
 }
 
-func NewRunManager() *RunManager {
+func NewRunManager(db *store.RunStore) *RunManager {
 	return &RunManager{
-		runs: make(
-			map[string]*RunRecord,
-		),
+		runs:  make(map[string]*RunRecord),
+		store: db,
 	}
 }
 
@@ -45,6 +47,13 @@ func (m *RunManager) Add(
 
 		Meta: meta,
 	}
+}
+
+func (m *RunManager) CreateRun(id string, meta RunMeta, startedAt time.Time) {
+	if m.store == nil {
+		return
+	}
+	m.store.CreateRun(id, meta.WorkflowID, meta.Task, startedAt)
 }
 
 func (m *RunManager) Get(
@@ -111,4 +120,80 @@ func (m *RunManager) List() []RunRecord {
 	)
 
 	return records
+}
+
+func (m *RunManager) UpdateStatus(runID string, status graph.Status, completedAt *time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	record, ok := m.runs[runID]
+	if !ok {
+		return
+	}
+
+	record.Run.Status = status
+	record.Run.CompletedAt = completedAt
+
+	if m.store != nil {
+		m.store.UpdateRunStatus(runID, status, completedAt)
+	}
+}
+
+func (m *RunManager) PersistRunSnapshot(runID string) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	record, ok := m.runs[runID]
+	if !ok {
+		return nil
+	}
+
+	if m.store == nil {
+		return nil
+	}
+
+	snapshot := record.Run.Snapshot()
+
+	for _, e := range snapshot.Executions {
+		if err := m.store.AddNodeExecution(runID, e); err != nil {
+			return err
+		}
+	}
+
+	for _, e := range snapshot.AgentExecutions {
+		if err := m.store.AddAgentExecution(runID, e); err != nil {
+			return err
+		}
+	}
+
+	for _, c := range snapshot.LLMCalls {
+		if err := m.store.AddLLMCall(runID, c); err != nil {
+			return err
+		}
+	}
+
+	for _, c := range snapshot.ToolCalls {
+		if err := m.store.AddToolCall(runID, c); err != nil {
+			return err
+		}
+	}
+
+	for _, a := range snapshot.EdgeActivations {
+		if err := m.store.AddEdgeActivation(runID, a); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (m *RunManager) Store() *store.RunStore {
+	return m.store
+}
+
+func (m *RunManager) ListFromStore() ([]store.RunRecord, error) {
+	if m.store == nil {
+		return nil, nil
+	}
+	return m.store.ListRuns()
 }

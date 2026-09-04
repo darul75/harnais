@@ -12,6 +12,7 @@ import (
 	"harnais/config"
 	"harnais/graph"
 	"harnais/server"
+	"harnais/store"
 	"harnais/tools"
 	"harnais/workflows"
 )
@@ -25,8 +26,19 @@ func main() {
 	eventBus :=
 		server.NewEventBus()
 
+	dbPath := os.Getenv("HARNAIS_DB")
+	if dbPath == "" {
+		dbPath = "./harnais.db"
+	}
+
+	runStore, err := store.NewRunStore(dbPath)
+	if err != nil {
+		log.Fatalf("init run store: %v", err)
+	}
+	defer runStore.Close()
+
 	runManager :=
-		server.NewRunManager()
+		server.NewRunManager(runStore)
 
 	// ============================================================
 	// Settings
@@ -35,7 +47,7 @@ func main() {
 	settingsPath :=
 		os.Getenv("HARNAIS_SETTINGS")
 
-	store :=
+	settings :=
 		config.NewStore(
 			settingsPath,
 		)
@@ -63,7 +75,7 @@ func main() {
 	registry, err :=
 		workflows.Register(
 			workspace,
-			store,
+			settings,
 			questionHub,
 		)
 
@@ -74,7 +86,7 @@ func main() {
 	selector :=
 		workflows.NewSelector(
 			registry,
-			store.LLMFactory(
+			settings.LLMFactory(
 				"openai",
 			),
 		)
@@ -97,6 +109,16 @@ func main() {
 				eventBus.Publish(
 					event,
 				)
+
+				// Persist run snapshot on completion/failure
+				switch event.Type {
+				case graph.EventRunCompleted, graph.EventRunFailed:
+					if err := runManager.PersistRunSnapshot(event.RunID); err != nil {
+						fmt.Printf("[PERSIST] failed to persist run %s: %v\n", event.RunID, err)
+					} else {
+						fmt.Printf("[PERSIST] run %s snapshot persisted\n", event.RunID)
+					}
+				}
 			},
 
 			// ------------------------------------------------
@@ -119,7 +141,7 @@ func main() {
 
 			runManager,
 
-			store,
+			settings,
 
 			workspace,
 
@@ -198,6 +220,13 @@ func main() {
 						request.PDFPath
 				}
 
+				meta := server.RunMeta{
+					Task:       request.Task,
+					WorkflowID: workflow.ID,
+				}
+
+				runManager.CreateRun(runID, meta, time.Now())
+
 				run :=
 					executor.StartWithID(
 						context.Background(),
@@ -208,11 +237,7 @@ func main() {
 
 				runManager.Add(
 					run,
-					server.RunMeta{
-						Task: request.Task,
-
-						WorkflowID: workflow.ID,
-					},
+					meta,
 				)
 
 				fmt.Println()

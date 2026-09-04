@@ -20,7 +20,7 @@ func newReportServer(t *testing.T) (*httptest.Server, *tools.Workspace, *RunMana
 		filepath.Join(t.TempDir(), "ws"),
 	)
 
-	runs := NewRunManager()
+	runs := NewRunManager(nil)
 
 	api := NewServer(
 		NewEventBus(),
